@@ -1,0 +1,24 @@
+{
+  "state": "failed",
+  "message": "robot move failed - human intervention required",
+  "controller_response": "0,{},MovJ(375.044,138.404,150.000,0.000);",
+  "error_code": 17,
+  "error_hint": {
+    "meaning": "MG400 rejected an edge or unreachable travel target",
+    "likely_cause": "The selected coin is close to the calibrated/workspace boundary, or the robot cannot safely plan the high-Z transfer to that XY.",
+    "suggested_action": "Clear the alarm, skip this edge target, choose a central coin, and keep targets inside the conservative workspace."
+  },
+  "requires_human_intervention": true,
+  "attempted_robot_xyz_mm": [
+    375.044,
+    138.404,
+    150.0
+  ],
+  "target": {
+    "index": 10,
+    "label_name": "5NT",
+    "robot_x_mm": 375.044,
+    "robot_y_mm": 138.404,
+    "robot_z_mm": -160.0
+  }
+}

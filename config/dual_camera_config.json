@@ -1,0 +1,52 @@
+{
+  "quality_camera_index": 3,
+  "gemini_camera_index": 2,
+  "quality_width": 1280,
+  "quality_height": 720,
+  "quality_fps": 30,
+  "quality_roi": [
+    286,
+    12,
+    1057,
+    720
+  ],
+  "quality_min_area": 350,
+  "quality_max_area": 20000,
+  "quality_min_axis": 12,
+  "quality_max_axis": 180,
+  "quality_detection_method": "sam3_ellipse",
+  "quality_sam3_interval_frames": 30,
+  "quality_diameter_history": 5,
+  "quality_min_class_margin_mm": 0.45,
+  "gemini_snapshot_frames": 80,
+  "gemini_depth_avg_frames": 15,
+  "quality_fallback_width": 640,
+  "quality_fallback_height": 480,
+  "quality_fallback_fps": 15,
+  "gemini_display_roi": [
+    368,
+    52,
+    937,
+    610
+  ],
+  "gemini_color_auto_exposure": false,
+  "gemini_color_exposure": 2013,
+  "gemini_color_gain": 103,
+  "gemini_color_width": 1280,
+  "gemini_color_height": 720,
+  "gemini_color_format": "RGB",
+  "gemini_color_fps": 30,
+  "gemini_min_diameter_mm": 18.0,
+  "gemini_max_diameter_mm": 32.0,
+  "coin_class_diameters_mm": {
+    "1yuan": 20.0,
+    "5yuan": 22.0,
+    "10yuan": 26.0,
+    "50yuan": 28.0
+  },
+  "robot_output_enabled": true,
+  "robot_tabletop_homography_path": "robot_tabletop_homography.json",
+  "robot_h_path": "data\\H.npy",
+  "robot_extrinsics_path": "data\\camera_extrinsics.npz",
+  "robot_table_z_mm": -160.0
+}

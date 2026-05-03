@@ -1,0 +1,237 @@
+{
+  "mode": "quality_to_gemini_image_homography",
+  "timestamp": "2026-05-02T15:34:22",
+  "description": "Map a Quality camera pixel [x,y] to the corresponding Gemini color/depth pixel [x,y]. No world coordinate conversion.",
+  "quality_to_gemini_homography": [
+    [
+      -0.4945751563170908,
+      -0.06535061542643905,
+      898.261781263311
+    ],
+    [
+      0.006123152401597742,
+      -0.4873872909316325,
+      485.3083836521075
+    ],
+    [
+      -5.022579777235038e-05,
+      -6.66813774259245e-05,
+      1.0
+    ]
+  ],
+  "mean_error_px": 16.707754135131836,
+  "max_error_px": 192.27566528320312,
+  "inliers": 810,
+  "n_points": 1026,
+  "used_pairs": [
+    {
+      "index": 1,
+      "gemini": "gemini\\pair_001_20260502_153058_photo_gemini.jpg",
+      "quality": "quality\\pair_001_20260502_153058_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:reverse_all gemini:flip_rows",
+      "pair_mean_error_px": 0.176285058259964
+    },
+    {
+      "index": 2,
+      "gemini": "gemini\\pair_002_20260502_153107_photo_gemini.jpg",
+      "quality": "quality\\pair_002_20260502_153107_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_rows gemini:flip_rows",
+      "pair_mean_error_px": 0.1800626516342163
+    },
+    {
+      "index": 4,
+      "gemini": "gemini\\pair_004_20260502_153116_photo_gemini.jpg",
+      "quality": "quality\\pair_004_20260502_153116_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_rows gemini:normal",
+      "pair_mean_error_px": 0.24865378439426422
+    },
+    {
+      "index": 5,
+      "gemini": "gemini\\pair_005_20260502_153117_photo_gemini.jpg",
+      "quality": "quality\\pair_005_20260502_153117_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_cols gemini:flip_cols",
+      "pair_mean_error_px": 0.19622176885604858
+    },
+    {
+      "index": 6,
+      "gemini": "gemini\\pair_006_20260502_153121_photo_gemini.jpg",
+      "quality": "quality\\pair_006_20260502_153121_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.23798848688602448
+    },
+    {
+      "index": 7,
+      "gemini": "gemini\\pair_007_20260502_153123_photo_gemini.jpg",
+      "quality": "quality\\pair_007_20260502_153123_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_rows gemini:flip_rows",
+      "pair_mean_error_px": 0.2030402272939682
+    },
+    {
+      "index": 8,
+      "gemini": "gemini\\pair_008_20260502_153124_photo_gemini.jpg",
+      "quality": "quality\\pair_008_20260502_153124_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:reverse_all gemini:reverse_all",
+      "pair_mean_error_px": 0.15755748748779297
+    },
+    {
+      "index": 9,
+      "gemini": "gemini\\pair_009_20260502_153129_photo_gemini.jpg",
+      "quality": "quality\\pair_009_20260502_153129_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.15566368401050568
+    },
+    {
+      "index": 10,
+      "gemini": "gemini\\pair_010_20260502_153131_photo_gemini.jpg",
+      "quality": "quality\\pair_010_20260502_153131_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.18379651010036469
+    },
+    {
+      "index": 11,
+      "gemini": "gemini\\pair_011_20260502_153132_photo_gemini.jpg",
+      "quality": "quality\\pair_011_20260502_153132_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.1841689497232437
+    },
+    {
+      "index": 12,
+      "gemini": "gemini\\pair_012_20260502_153135_photo_gemini.jpg",
+      "quality": "quality\\pair_012_20260502_153135_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_rows gemini:flip_rows",
+      "pair_mean_error_px": 0.14350439608097076
+    },
+    {
+      "index": 13,
+      "gemini": "gemini\\pair_013_20260502_153141_photo_gemini.jpg",
+      "quality": "quality\\pair_013_20260502_153141_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.1264820545911789
+    },
+    {
+      "index": 14,
+      "gemini": "gemini\\pair_014_20260502_153143_photo_gemini.jpg",
+      "quality": "quality\\pair_014_20260502_153143_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.1339588761329651
+    },
+    {
+      "index": 15,
+      "gemini": "gemini\\pair_015_20260502_153146_photo_gemini.jpg",
+      "quality": "quality\\pair_015_20260502_153146_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.11256127059459686
+    },
+    {
+      "index": 16,
+      "gemini": "gemini\\pair_016_20260502_153148_photo_gemini.jpg",
+      "quality": "quality\\pair_016_20260502_153148_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:normal gemini:normal",
+      "pair_mean_error_px": 0.23182041943073273
+    },
+    {
+      "index": 17,
+      "gemini": "gemini\\pair_017_20260502_153150_photo_gemini.jpg",
+      "quality": "quality\\pair_017_20260502_153150_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_cols gemini:normal",
+      "pair_mean_error_px": 0.14223720133304596
+    },
+    {
+      "index": 18,
+      "gemini": "gemini\\pair_018_20260502_153154_photo_gemini.jpg",
+      "quality": "quality\\pair_018_20260502_153154_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:reverse_all gemini:reverse_all",
+      "pair_mean_error_px": 0.13048380613327026
+    },
+    {
+      "index": 19,
+      "gemini": "gemini\\pair_019_20260502_153157_photo_gemini.jpg",
+      "quality": "quality\\pair_019_20260502_153157_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:flip_rows gemini:flip_rows",
+      "pair_mean_error_px": 0.6369360685348511
+    },
+    {
+      "index": 20,
+      "gemini": "gemini\\pair_020_20260502_153158_photo_gemini.jpg",
+      "quality": "quality\\pair_020_20260502_153158_photo_quality.jpg",
+      "pattern": [
+        9,
+        6
+      ],
+      "corner_order": "quality:reverse_all gemini:normal",
+      "pair_mean_error_px": 0.21923698484897614
+    }
+  ]
+}

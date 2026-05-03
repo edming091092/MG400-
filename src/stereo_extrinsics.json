@@ -1,0 +1,208 @@
+{
+  "mode": "stereo_chessboard_extrinsics",
+  "timestamp": "2026-05-02T15:22:27",
+  "convention": "P_quality = R_gemini_to_quality @ P_gemini + T_gemini_to_quality",
+  "rms_px": 9.881181823083047,
+  "projection_check_mean_px": 26.192651340806925,
+  "projection_check_max_px": 124.7582015991211,
+  "n_pairs": 20,
+  "board": {
+    "inner_corners_w": 9,
+    "inner_corners_h": 6,
+    "square_mm": 26.0
+  },
+  "gemini_camera_matrix": [
+    [
+      689.5394287109375,
+      0.0,
+      641.5509643554688
+    ],
+    [
+      0.0,
+      689.695556640625,
+      360.8081970214844
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "gemini_dist_coeffs": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "gemini_img_size": [
+    1280,
+    720
+  ],
+  "quality_camera_matrix": [
+    [
+      1403.2499793886807,
+      0.0,
+      636.3611884573776
+    ],
+    [
+      0.0,
+      1400.7316139966174,
+      377.8487420672724
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "quality_dist_coeffs": [
+    -0.00906005401733118,
+    1.2418150434542152,
+    -0.0010342957685678057,
+    9.155908689951517e-05,
+    -4.206530276763376
+  ],
+  "quality_img_size": [
+    1280,
+    720
+  ],
+  "R_gemini_to_quality": [
+    [
+      -0.9960584237938782,
+      0.052992548583495114,
+      0.07112950290758982
+    ],
+    [
+      -0.048475043933332476,
+      -0.9967845900742933,
+      0.06380165441494834
+    ],
+    [
+      0.07428180466922168,
+      0.060102169553593654,
+      0.9954245037721516
+    ]
+  ],
+  "T_gemini_to_quality_mm": [
+    -91.60848051840318,
+    -79.15608878801942,
+    9.774006549835802
+  ],
+  "essential_matrix": [
+    [
+      -5.406061728823257,
+      4.985126442624681,
+      -79.41750819050067
+    ],
+    [
+      -2.9306383022682647,
+      6.0238179456117225,
+      91.88454648865765
+    ],
+    [
+      -74.40336391408748,
+      95.50860458164398,
+      -0.2144393679128216
+    ]
+  ],
+  "fundamental_matrix": [
+    [
+      -1.9073993862528524e-07,
+      1.7584842912776764e-07,
+      -0.0018732066308344627
+    ],
+    [
+      -1.035864556721134e-07,
+      2.1286990517332684e-07,
+      0.0022291057470060008
+    ],
+    [
+      -0.0035232144212058295,
+      0.004535254845730393,
+      1.0
+    ]
+  ],
+  "used_pairs": [
+    {
+      "gemini": "gemini\\pair_001_20260502_140854_photo_gemini.jpg",
+      "quality": "quality\\pair_001_20260502_140854_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_002_20260502_141137_photo_gemini.jpg",
+      "quality": "quality\\pair_002_20260502_141137_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_003_20260502_145731_photo_gemini.jpg",
+      "quality": "quality\\pair_003_20260502_145731_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_004_20260502_145902_photo_gemini.jpg",
+      "quality": "quality\\pair_004_20260502_145902_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_005_20260502_145952_photo_gemini.jpg",
+      "quality": "quality\\pair_005_20260502_145952_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_006_20260502_150055_photo_gemini.jpg",
+      "quality": "quality\\pair_006_20260502_150055_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_007_20260502_150057_photo_gemini.jpg",
+      "quality": "quality\\pair_007_20260502_150057_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_008_20260502_150104_photo_gemini.jpg",
+      "quality": "quality\\pair_008_20260502_150104_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_009_20260502_150109_photo_gemini.jpg",
+      "quality": "quality\\pair_009_20260502_150109_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_010_20260502_150113_photo_gemini.jpg",
+      "quality": "quality\\pair_010_20260502_150113_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_011_20260502_150115_photo_gemini.jpg",
+      "quality": "quality\\pair_011_20260502_150115_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_012_20260502_150119_photo_gemini.jpg",
+      "quality": "quality\\pair_012_20260502_150119_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_013_20260502_150120_photo_gemini.jpg",
+      "quality": "quality\\pair_013_20260502_150120_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_014_20260502_150126_photo_gemini.jpg",
+      "quality": "quality\\pair_014_20260502_150126_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_015_20260502_150128_photo_gemini.jpg",
+      "quality": "quality\\pair_015_20260502_150128_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_016_20260502_150130_photo_gemini.jpg",
+      "quality": "quality\\pair_016_20260502_150130_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_017_20260502_150131_photo_gemini.jpg",
+      "quality": "quality\\pair_017_20260502_150131_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_018_20260502_150132_photo_gemini.jpg",
+      "quality": "quality\\pair_018_20260502_150132_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_019_20260502_150138_photo_gemini.jpg",
+      "quality": "quality\\pair_019_20260502_150138_photo_quality.jpg"
+    },
+    {
+      "gemini": "gemini\\pair_020_20260502_150140_photo_gemini.jpg",
+      "quality": "quality\\pair_020_20260502_150140_photo_quality.jpg"
+    }
+  ]
+}
