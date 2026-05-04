@@ -18,6 +18,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+import cv2
 from PIL import Image, ImageTk
 
 
@@ -168,11 +169,13 @@ class CoinRobotUI(tk.Tk):
         self.geometry("1280x800")
         self.minsize(1120, 700)
         self.configure(bg="#202326")
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self.targets_data = {}
         self.selected_index = tk.IntVar(value=0)
         self.camera_view = tk.StringVar(value="Quality")
         self.busy = False
+        self.preview_busy = False
         self.pending_robot_action = None
         self._photo = None
         self.last_failure_signature = None
@@ -180,6 +183,8 @@ class CoinRobotUI(tk.Tk):
         self._display_image_size = (0, 0)
         self._display_image_offset = (0, 0)
         self._loaded_image_size = (0, 0)
+        self._quality_cap = None
+        self._quality_preview_error_logged = False
         self.zoom = 1.0
         self.auto_preview = tk.BooleanVar(value=True)
         self.move_speed_var = tk.IntVar(value=int(self.ui_config.get("ui_move_speed", 40)))
@@ -253,7 +258,7 @@ class CoinRobotUI(tk.Tk):
                 text=self._t(key),
                 value=value,
                 variable=self.camera_view,
-                command=lambda: self._load_latest_image(force=True),
+                command=self._on_camera_view_change,
             ).grid(row=0, column=i, sticky="w", padx=(12, 0))
         self.vision_note_var = tk.StringVar(value=self._t("vision_note"))
         ttk.Label(image_head, textvariable=self.vision_note_var, style="Panel.TLabel").grid(row=0, column=5, sticky="e")
@@ -356,7 +361,14 @@ class CoinRobotUI(tk.Tk):
 
     def _auto_preview_loop(self):
         if self.auto_preview.get() and not self.busy:
+            if self.camera_view.get() == "Quality":
+                self._update_quality_live_frame()
+                self.after(45, self._auto_preview_loop)
+                return
+            self._close_quality_preview()
             self._preview_only()
+        elif self.camera_view.get() != "Quality":
+            self._close_quality_preview()
         self.after(900, self._auto_preview_loop)
 
     def _set_busy(self, busy, text=None):
@@ -440,6 +452,14 @@ class CoinRobotUI(tk.Tk):
             preview = OUT_DIR / "live_preview_quality.jpg"
             if preview.exists():
                 return preview
+        if self.camera_view.get() == "Gemini":
+            preview = OUT_DIR / "live_preview_gemini.jpg"
+            if preview.exists():
+                return preview
+        if self.camera_view.get() == "Combined":
+            preview = OUT_DIR / "live_preview_combined.jpg"
+            if preview.exists():
+                return preview
         prefix = {
             "Gemini": "gemini_view_*.jpg",
             "Quality": "quality_view_*.jpg",
@@ -450,6 +470,32 @@ class CoinRobotUI(tk.Tk):
             files = sorted(OUT_DIR.glob("dual_camera_snapshot_*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
         return files[0] if files else None
 
+    def _display_pil_image(self, img, source_key=None):
+        original_size = img.size
+        box_w = max(400, self.image_label.winfo_width() - 4)
+        box_h = max(280, self.image_label.winfo_height() - 4)
+        fit_scale = min(box_w / img.width, box_h / img.height)
+        scale = fit_scale * self.zoom
+        new_w = max(1, int(img.width * scale))
+        new_h = max(1, int(img.height * scale))
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        if new_w > box_w or new_h > box_h:
+            left = max(0, (new_w - box_w) // 2)
+            top = max(0, (new_h - box_h) // 2)
+            img = img.crop((left, top, left + min(box_w, new_w), top + min(box_h, new_h)))
+            self._crop_offset_scaled = (left, top)
+        else:
+            self._crop_offset_scaled = (0, 0)
+        self._loaded_image_size = original_size
+        self._display_image_size = img.size
+        label_w = max(1, self.image_label.winfo_width())
+        label_h = max(1, self.image_label.winfo_height())
+        self._display_image_offset = ((label_w - img.size[0]) // 2, (label_h - img.size[1]) // 2)
+        self._image_scale = scale
+        self._photo = ImageTk.PhotoImage(img)
+        self.image_label.configure(image=self._photo, text="")
+        self._last_image_path = source_key
+
     def _load_latest_image(self, force=False):
         path = self._latest_snapshot()
         if path is None:
@@ -458,32 +504,72 @@ class CoinRobotUI(tk.Tk):
             return
         try:
             img = Image.open(path).convert("RGB")
-            original_size = img.size
-            box_w = max(400, self.image_label.winfo_width() - 4)
-            box_h = max(280, self.image_label.winfo_height() - 4)
-            fit_scale = min(box_w / img.width, box_h / img.height)
-            scale = fit_scale * self.zoom
-            new_w = max(1, int(img.width * scale))
-            new_h = max(1, int(img.height * scale))
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            if new_w > box_w or new_h > box_h:
-                left = max(0, (new_w - box_w) // 2)
-                top = max(0, (new_h - box_h) // 2)
-                img = img.crop((left, top, left + min(box_w, new_w), top + min(box_h, new_h)))
-                self._crop_offset_scaled = (left, top)
-            else:
-                self._crop_offset_scaled = (0, 0)
-            self._loaded_image_size = original_size
-            self._display_image_size = img.size
-            label_w = max(1, self.image_label.winfo_width())
-            label_h = max(1, self.image_label.winfo_height())
-            self._display_image_offset = ((label_w - img.size[0]) // 2, (label_h - img.size[1]) // 2)
-            self._image_scale = scale
-            self._photo = ImageTk.PhotoImage(img)
-            self.image_label.configure(image=self._photo, text="")
-            self._last_image_path = path
+            self._display_pil_image(img, path)
         except Exception as e:
             self._log(f"影像載入失敗：{e}")
+
+    def _open_quality_preview(self):
+        if self._quality_cap is not None and self._quality_cap.isOpened():
+            return self._quality_cap
+        cfg = self._load_config()
+        cap = cv2.VideoCapture(int(cfg.get("quality_camera_index", 0)), cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(cfg.get("quality_width", 1280)))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(cfg.get("quality_height", 720)))
+        cap.set(cv2.CAP_PROP_FPS, int(cfg.get("quality_fps", 30)))
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+        if not cap.isOpened():
+            cap.release()
+            return None
+        self._quality_cap = cap
+        self._quality_preview_error_logged = False
+        return cap
+
+    def _close_quality_preview(self):
+        if self._quality_cap is not None:
+            try:
+                self._quality_cap.release()
+            except Exception:
+                pass
+            self._quality_cap = None
+
+    def _crop_quality_roi(self, frame):
+        roi = self._load_config().get("quality_roi")
+        if not roi:
+            return frame
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = [int(v) for v in roi]
+        x1 = max(0, min(x1, w - 1))
+        x2 = max(x1 + 1, min(x2, w))
+        y1 = max(0, min(y1, h - 1))
+        y2 = max(y1 + 1, min(y2, h))
+        return frame[y1:y2, x1:x2].copy()
+
+    def _update_quality_live_frame(self):
+        cap = self._open_quality_preview()
+        if cap is None:
+            if not self._quality_preview_error_logged:
+                self._log("畫質相機開啟失敗")
+                self._quality_preview_error_logged = True
+            return
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            return
+        frame = self._crop_quality_roi(frame)
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        self._display_pil_image(img, "quality-live")
+
+    def _on_camera_view_change(self):
+        if self.camera_view.get() != "Quality":
+            self._close_quality_preview()
+        self._last_image_path = None
+        self._load_latest_image(force=True)
+
+    def _on_close(self):
+        self._close_quality_preview()
+        self.destroy()
 
     def _on_image_wheel(self, event):
         if event.delta > 0:
@@ -772,12 +858,19 @@ class CoinRobotUI(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_preview_async(self):
+        if self.preview_busy:
+            return
+        self.preview_busy = True
+        view = self.camera_view.get()
         def worker():
-            result = subprocess.run([str(PYTHON), "camera_preview_once.py"], cwd=str(HERE), text=True, capture_output=True, encoding="utf-8", errors="replace")
-            if result.returncode == 0:
-                self.after(0, lambda: self._load_latest_image(force=True))
-            else:
-                self.after(0, lambda: self._log("相機預覽失敗"))
+            try:
+                result = subprocess.run([str(PYTHON), "camera_preview_once.py", "--view", view], cwd=str(HERE), text=True, capture_output=True, encoding="utf-8", errors="replace")
+                if result.returncode == 0:
+                    self.after(0, lambda: self._load_latest_image(force=True))
+                else:
+                    self.after(0, lambda: self._log("相機預覽失敗"))
+            finally:
+                self.preview_busy = False
         threading.Thread(target=worker, daemon=True).start()
 
     def _run_robot_action_when_ready(self, action):
