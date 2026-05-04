@@ -20,6 +20,7 @@ from pathlib import Path
 import cv2
 
 from calibrate_camera import find_chessboard_corners, resize_for_show
+from calibration_session import archive_dir, choose_session_mode
 
 
 HERE = Path(__file__).parent
@@ -49,12 +50,16 @@ def draw_status(frame, found, saved_count, camera_index, board_w, board_h):
     out = frame.copy()
     color = (0, 220, 80) if found else (0, 80, 255)
     text = "CHESSBOARD OK" if found else "NO CHESSBOARD"
-    cv2.rectangle(out, (0, 0), (out.shape[1], 74), (20, 20, 20), -1)
+    cv2.rectangle(out, (0, 0), (out.shape[1], 104), (20, 20, 20), -1)
     cv2.putText(out, f"Quality cam #{camera_index}  {text}", (14, 28),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.68, color, 2, cv2.LINE_AA)
     cv2.putText(out, f"board={board_w}x{board_h} inner corners  saved={saved_count}  SPACE=save  Q=quit",
                 (14, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (190, 190, 190), 1, cv2.LINE_AA)
     return out
+
+
+def count_images(path):
+    return len(list(Path(path).glob("*.jpg"))) if Path(path).exists() else 0
 
 
 def main():
@@ -69,10 +74,25 @@ def main():
     parser.add_argument("--preview-dir", type=Path, default=PREVIEW_DIR)
     parser.add_argument("--board-w", type=int, default=9)
     parser.add_argument("--board-h", type=int, default=6)
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--reset", action="store_true", help="備份舊資料並重新開始")
+    mode_group.add_argument("--append", action="store_true", help="保留舊資料並繼續新增")
     args = parser.parse_args()
 
     out_dir = args.out_dir if args.out_dir.is_absolute() else HERE / args.out_dir
     preview_dir = args.preview_dir if args.preview_dir.is_absolute() else HERE / args.preview_dir
+    existing_count = count_images(out_dir)
+    if args.reset:
+        session_mode = "reset"
+    elif args.append:
+        session_mode = "append"
+    else:
+        session_mode = choose_session_mode("畫質相機內參棋盤拍攝", existing_count, default="reset")
+    if session_mode == "reset":
+        backup = archive_dir(out_dir)
+        archive_dir(preview_dir)
+        if backup is not None:
+            print(f"[資料] 舊資料已備份：{backup}")
     out_dir.mkdir(exist_ok=True)
     preview_dir.mkdir(exist_ok=True)
 
@@ -110,6 +130,8 @@ def main():
             if found and corners is not None:
                 cv2.drawChessboardCorners(debug, pattern_size, corners, found)
             debug = draw_status(debug, found, saved_count, args.camera_index, args.board_w, args.board_h)
+            cv2.putText(debug, f"mode={'APPEND' if session_mode == 'append' else 'RESET'}",
+                        (14, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 255), 1, cv2.LINE_AA)
             cv2.imshow(win, resize_for_show(debug, 1280, 720))
 
             key = cv2.waitKey(1) & 0xFF

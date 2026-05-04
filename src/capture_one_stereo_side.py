@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 
 from calibrate_camera import find_chessboard_corners, resize_for_show
+from calibration_session import archive_dir, choose_session_mode
 from capture_stereo_calib_pairs import blur_score, draw_status
 from dual_camera_live import load_config, open_quality_camera
 from gemini_controls import apply_color_controls, set_gemini_stream_env
@@ -70,11 +71,25 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
     parser.add_argument("--board-w", type=int, default=9)
     parser.add_argument("--board-h", type=int, default=6)
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--reset", action="store_true", help="備份這一側舊照片並重新開始")
+    mode_group.add_argument("--append", action="store_true", help="保留這一側舊照片並繼續新增")
     args = parser.parse_args()
 
     out_dir = args.out_dir if args.out_dir.is_absolute() else HERE / args.out_dir
     side_dir = out_dir / args.side
     preview_dir = out_dir / "single_preview"
+    existing_count = len(list(side_dir.glob(f"pair_*_{args.side}.jpg"))) if side_dir.exists() else 0
+    if args.reset:
+        session_mode = "reset"
+    elif args.append:
+        session_mode = "append"
+    else:
+        session_mode = choose_session_mode(f"單相機標定照片擷取：{args.side}", existing_count, default="reset")
+    if session_mode == "reset":
+        backup = archive_dir(side_dir)
+        if backup is not None:
+            print(f"[資料] 舊資料已備份：{backup}")
     side_dir.mkdir(parents=True, exist_ok=True)
     preview_dir.mkdir(parents=True, exist_ok=True)
     save_metadata(out_dir, args.board_w, args.board_h)
@@ -102,6 +117,7 @@ def main():
         print(f"單相機標定照片擷取：{title}")
         print("=" * 60)
         print(f"輸出資料夾：{side_dir}")
+        print(f"資料模式：{'保留舊資料繼續新增' if session_mode == 'append' else '清空舊資料重新開始'}")
         print(f"棋盤格內角點：{args.board_w} x {args.board_h}")
         print("SPACE 拍照，C 檢查棋盤偵測，Q/ESC 離開")
         print("請用同一個 pair 編號對應另一台相機的照片。")
@@ -140,6 +156,7 @@ def main():
                 blur,
                 "single camera mode",
                 photo_mode=False,
+                session_mode=session_mode,
             )
             cv2.imshow(win, resize_for_show(vis, 1280, 720))
 

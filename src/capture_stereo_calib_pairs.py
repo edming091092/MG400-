@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 
 from calibrate_camera import find_chessboard_corners, resize_for_show
+from calibration_session import archive_dir, choose_session_mode
 from dual_camera_live import load_config, open_quality_camera
 from gemini_controls import apply_color_controls, set_gemini_stream_env
 
@@ -86,17 +87,19 @@ def detect_chessboard(gray, pattern_size, mode="fast"):
     return False, None, pattern_size
 
 
-def draw_status(frame, title, found, count, blur=None, detect_note="", photo_mode=True, separate_mode=False):
+def draw_status(frame, title, found, count, blur=None, detect_note="", photo_mode=True, separate_mode=False, session_mode="append"):
     out = frame.copy()
     color = (0, 220, 255) if photo_mode else ((0, 220, 80) if found else (0, 80, 255))
     msg = "PHOTO MODE" if photo_mode else ("CHESSBOARD OK" if found else "NO CHESSBOARD")
     blur_text = "" if blur is None else f"  blur={blur:.1f}"
-    cv2.rectangle(out, (0, 0), (out.shape[1], 72), (20, 20, 20), -1)
+    cv2.rectangle(out, (0, 0), (out.shape[1], 104), (20, 20, 20), -1)
     cv2.putText(out, f"{title}: {msg}{blur_text}", (14, 28),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.68, color, 2, cv2.LINE_AA)
     keys = "G=Gemini  H=Quality  C=check  Q=quit" if separate_mode else "SPACE=both  C=check  Q=quit"
     cv2.putText(out, f"saved={count}  {keys} {detect_note}",
                 (14, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (190, 190, 190), 1, cv2.LINE_AA)
+    cv2.putText(out, f"mode={'APPEND old data' if session_mode == 'append' else 'RESET new session'}",
+                (14, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 220, 255), 1, cv2.LINE_AA)
     return out
 
 
@@ -121,9 +124,23 @@ def main():
     parser.add_argument("--live-detect", action="store_true", help="開啟即時棋盤偵測；預設關閉，避免卡頓")
     parser.add_argument("--detect-interval", type=int, default=15, help="即時偵測模式下每幾幀跑一次棋盤偵測")
     parser.add_argument("--separate-capture", action="store_true", help="分開按 G/H 拍 Gemini 與側相機，再自動組成一組配對")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--reset", action="store_true", help="備份舊資料並重新開始")
+    mode_group.add_argument("--append", action="store_true", help="保留舊資料並繼續新增")
     args = parser.parse_args()
 
     out_dir = args.out_dir if args.out_dir.is_absolute() else HERE / args.out_dir
+    existing_count = len(list((out_dir / "gemini").glob("pair_*_gemini.jpg"))) if out_dir.exists() else 0
+    if args.reset:
+        session_mode = "reset"
+    elif args.append:
+        session_mode = "append"
+    else:
+        session_mode = choose_session_mode("雙相機棋盤拍攝", existing_count, default="reset")
+    if session_mode == "reset":
+        backup = archive_dir(out_dir)
+        if backup is not None:
+            print(f"[資料] 舊資料已備份：{backup}")
     gemini_dir = out_dir / "gemini"
     quality_dir = out_dir / "quality"
     preview_dir = out_dir / "preview"
@@ -167,6 +184,7 @@ def main():
         print("雙相機外參標定配對拍照")
         print("=" * 60)
         print(f"輸出資料夾：{out_dir}")
+        print(f"資料模式：{'保留舊資料繼續新增' if session_mode == 'append' else '清空舊資料重新開始'}")
         print(f"棋盤格內角點：{args.board_w} x {args.board_h}")
         if args.separate_capture:
             print("模式：分開拍照，不做即時辨識")
@@ -200,8 +218,8 @@ def main():
             quality_path = quality_dir / f"{stem}_quality.jpg"
             preview_path = preview_dir / f"{stem}_preview.jpg"
             preview = np.hstack([
-                fit_panel(draw_status(gemini_frame, "Gemini color", False, saved_count, blur_score(gemini_frame), "saved pair preview", True, args.separate_capture)),
-                fit_panel(draw_status(quality_frame, "Quality side", False, saved_count, blur_score(quality_frame), "saved pair preview", True, args.separate_capture)),
+                fit_panel(draw_status(gemini_frame, "Gemini color", False, saved_count, blur_score(gemini_frame), "saved pair preview", True, args.separate_capture, session_mode)),
+                fit_panel(draw_status(quality_frame, "Quality side", False, saved_count, blur_score(quality_frame), "saved pair preview", True, args.separate_capture, session_mode)),
             ])
             cv2.imwrite(str(gemini_path), gemini_frame)
             cv2.imwrite(str(quality_path), quality_frame)
@@ -248,8 +266,8 @@ def main():
             detect_note = f"live detect every {max(1, args.detect_interval)}f" if args.live_detect else "offline detect after shooting"
             if args.separate_capture:
                 detect_note = f"separate mode  pending Gemini={pending_gemini is not None} Quality={pending_quality is not None}"
-            g_vis = draw_status(g_vis, "Gemini color", g_found, saved_count, g_blur, detect_note, photo_mode=not args.live_detect, separate_mode=args.separate_capture)
-            q_vis = draw_status(q_vis, "Quality side", q_found, saved_count, q_blur, detect_note, photo_mode=not args.live_detect, separate_mode=args.separate_capture)
+            g_vis = draw_status(g_vis, "Gemini color", g_found, saved_count, g_blur, detect_note, photo_mode=not args.live_detect, separate_mode=args.separate_capture, session_mode=session_mode)
+            q_vis = draw_status(q_vis, "Quality side", q_found, saved_count, q_blur, detect_note, photo_mode=not args.live_detect, separate_mode=args.separate_capture, session_mode=session_mode)
             combined = np.hstack([fit_panel(g_vis), fit_panel(q_vis)])
             cv2.imshow(win, resize_for_show(combined, 1920, 720))
 

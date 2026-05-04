@@ -124,6 +124,28 @@ def draw_projection_preview(quality_img, quality_corners, projected, out_path):
     cv2.imwrite(str(out_path), vis)
 
 
+def print_stereo_quality(rms, mean_err, max_err, used_count):
+    print("\n" + "=" * 60)
+    print("雙相機外參品質判斷")
+    print("=" * 60)
+    check_mean = mean_err if mean_err is not None else rms
+    check_max = max_err if max_err is not None else rms
+    if rms <= 2.0 and check_mean <= 3.0 and check_max <= 20.0:
+        print("結果：可以使用。外參與投影檢查誤差都低。")
+    elif rms <= 5.0 and check_mean <= 8.0:
+        print("結果：勉強可用，建議先做預覽檢查，不要直接拿來精密抓取。")
+    else:
+        print("結果：不建議使用，誤差偏大。")
+        print("可能原因：")
+        print("1. Gemini 與畫質相機照片不是同一個棋盤姿態")
+        print("2. 新舊棋盤資料混在同一個資料夾")
+        print("3. 內參品質差，或棋盤格尺寸 square-mm 設錯")
+        print("4. 棋盤太斜、模糊、反光，角點順序或位置錯")
+        print("改善方法：清空舊資料，重新拍 10~20 組同步棋盤，確認兩邊都是同一張棋盤且完整入鏡。")
+    if used_count < 10:
+        print("提醒：有效配對少於 10 組，建議多拍幾組分散位置。")
+
+
 def main():
     parser = argparse.ArgumentParser(description="雙相機外參標定")
     parser.add_argument("--pair-dir", type=Path, default=PAIR_DIR)
@@ -276,6 +298,7 @@ def main():
     print(f"stereo RMS：{rms:.4f} px")
     if mean_err is not None:
         print(f"投影檢查：mean={mean_err:.3f}px  max={max_err:.3f}px")
+    print_stereo_quality(float(rms), mean_err, max_err, len(used_pairs))
     print(f"T Gemini→Quality：{t.reshape(3)} mm")
     print(f"已輸出：{out_json}")
     print(f"投影預覽：{preview_dir}")

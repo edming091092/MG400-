@@ -148,6 +148,27 @@ def draw_preview(g_img, q_img, homography, out_path):
     cv2.imwrite(str(out_path), np.hstack([g_panel, q_panel]))
 
 
+def print_homography_quality(mean_err, max_err, used_count, total_count):
+    print("\n" + "=" * 60)
+    print("Quality -> Gemini 對位品質判斷")
+    print("=" * 60)
+    if mean_err <= 3.0 and max_err <= 25.0:
+        print("結果：可以使用。對位誤差低，硬幣中心映射到 Gemini depth 應該穩定。")
+    elif mean_err <= 6.0 and max_err <= 50.0:
+        print("結果：勉強可用，但建議重拍棋盤讓資料更乾淨。")
+        print("改善方法：棋盤放桌面不同位置，拍 10~15 張，不要混入舊資料。")
+    else:
+        print("結果：不建議使用，誤差太大。")
+        print("可能原因：")
+        print("1. 新舊棋盤照片混在同一個資料夾一起算")
+        print("2. 棋盤被手遮到、反光、模糊，或兩台相機有一邊沒有完整看到")
+        print("3. 棋盤方向歧義造成某幾組角點順序選錯")
+        print("4. 拍攝過程中相機位置動到")
+        print("改善方法：重新拍攝時選「清空舊資料重新開始」，拍 10~15 張分散在桌面四角和中心，再重新計算。")
+    if total_count > used_count:
+        print(f"提醒：共有 {total_count} 組資料，只使用 {used_count} 組；被略過的照片請檢查是否棋盤不完整或模糊。")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Quality 到 Gemini 的 2D 影像對位校準")
     parser.add_argument("--pair-dir", type=Path, default=PAIR_DIR)
@@ -225,6 +246,17 @@ def main():
 
     projected = cv2.perspectiveTransform(src.reshape(-1, 1, 2), homography).reshape(-1, 2)
     err = np.linalg.norm(projected - dst, axis=1)
+    final_pair_errors = []
+    offset = 0
+    for item, pts in zip(used, all_quality):
+        n = len(pts)
+        pair_err = err[offset:offset + n]
+        offset += n
+        final_pair_errors.append({
+            "index": item["index"],
+            "mean_error_px": float(np.mean(pair_err)),
+            "max_error_px": float(np.max(pair_err)),
+        })
     result = {
         "mode": "quality_to_gemini_image_homography",
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -234,6 +266,7 @@ def main():
         "max_error_px": float(np.max(err)),
         "inliers": int(inliers.sum()) if inliers is not None else int(len(src)),
         "n_points": int(len(src)),
+        "final_pair_errors": final_pair_errors,
         "used_pairs": used,
     }
     out_json.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -246,6 +279,12 @@ def main():
     print(f"使用配對：{len(used)}")
     print(f"平均對位誤差：{result['mean_error_px']:.2f}px")
     print(f"最大對位誤差：{result['max_error_px']:.2f}px")
+    worst = sorted(final_pair_errors, key=lambda x: x["max_error_px"], reverse=True)[:5]
+    if worst:
+        print("誤差最大的配對：")
+        for item in worst:
+            print(f"  pair {item['index']:03d}: mean={item['mean_error_px']:.2f}px max={item['max_error_px']:.2f}px")
+    print_homography_quality(result["mean_error_px"], result["max_error_px"], len(used), len(pairs))
     print(f"已輸出：{out_json}")
     print(f"預覽圖：{preview_dir / 'quality_to_gemini_preview.jpg'}")
 

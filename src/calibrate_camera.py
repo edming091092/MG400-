@@ -321,11 +321,17 @@ def save_calibration_result(camera_matrix, dist_coeffs, image_size, reproj_error
     print(f"已輸出：{OUT_JSON}")
 
     if reproj_error < 1.0:
-        print("品質判斷：良好")
+        print("品質判斷：良好，可以使用。")
     elif reproj_error < 2.0:
-        print("品質判斷：可用，但還能更好")
+        print("品質判斷：可用，但還能更好。建議確認 undistort 預覽沒有明顯彎曲或裁切。")
     else:
-        print("品質判斷：偏高，建議重拍標定照片")
+        print("品質判斷：偏高，不建議直接使用。")
+        print("可能原因：")
+        print("1. 棋盤內角點數設定錯，例如 10x7 格子要填 9x6 內角點")
+        print("2. 照片太少，或棋盤都集中在同一個位置")
+        print("3. 棋盤模糊、反光、被裁切，角點抓錯")
+        print("4. 新舊照片混在同一個資料夾")
+        print("改善方法：清空舊資料重新拍 15~25 張，棋盤放中心、四角、邊緣並有不同角度。")
 
 
 def save_undistort_preview(valid_paths, camera_matrix, dist_coeffs):
