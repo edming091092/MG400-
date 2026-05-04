@@ -554,7 +554,13 @@ class CoinRobotUI(tk.Tk):
                 self._log("畫質相機開啟失敗")
                 self._quality_preview_error_logged = True
             return
-        ok, frame = cap.read()
+        # DirectShow may keep a small frame queue. Drain it so the UI shows the
+        # newest available frame instead of briefly jumping back to older frames.
+        for _ in range(3):
+            cap.grab()
+        ok, frame = cap.retrieve()
+        if not ok or frame is None:
+            ok, frame = cap.read()
         if not ok or frame is None:
             return
         frame = self._crop_quality_roi(frame)
