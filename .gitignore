@@ -12,6 +12,7 @@ calib_images/
 calib_preview/
 stereo_calib_preview/
 tabletop_homography_pairs_*/
+*_backup_*/
 src/Log/
 calibration/*.jpg
 

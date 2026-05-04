@@ -103,34 +103,77 @@ def fit_all_order_homographies(quality_corners, gemini_corners, pattern):
 
 
 def choose_consistent_correspondences(pair_candidates):
-    """普通棋盤有翻轉歧義；枚舉每張的候選順序，選出可被同一個 H 解釋的一組。"""
-    selected = []
-    used = []
-    for idx, candidates in pair_candidates:
-        if not candidates:
-            continue
-        if not selected:
-            selected.append((idx, candidates[0]))
-            used.append(candidates[0])
-            continue
+    """Choose globally consistent checkerboard orientations and drop outliers.
 
-        best = None
-        for cand in candidates[:8]:
-            trial = used + [cand]
-            src = np.vstack([x["quality_corners"] for x in trial]).astype(np.float32)
-            dst = np.vstack([x["gemini_corners"] for x in trial]).astype(np.float32)
-            h_mat, inliers = cv2.findHomography(src, dst, cv2.RANSAC, 4.0)
-            if h_mat is None:
+    A plain chessboard has 180-degree / row / column ambiguities.  A single pair
+    can be fitted almost perfectly with several wrong corner orders, so a greedy
+    "best pair_err" choice can poison the whole calibration.  This routine first
+    searches all per-pair homography candidates as possible global seeds, then
+    iteratively re-selects the best orientation for each pair under the current
+    global H and rejects pairs that do not fit the same camera-to-camera mapping.
+    """
+
+    def candidate_error(h_mat, cand):
+        projected = cv2.perspectiveTransform(
+            cand["quality_corners"].reshape(-1, 1, 2), h_mat
+        ).reshape(-1, 2)
+        err = np.linalg.norm(projected - cand["gemini_corners"], axis=1)
+        return float(np.mean(err)), float(np.max(err)), float(np.median(err))
+
+    def fit_global(selected):
+        src = np.vstack([cand["quality_corners"] for _, cand in selected]).astype(np.float32)
+        dst = np.vstack([cand["gemini_corners"] for _, cand in selected]).astype(np.float32)
+        h_mat, _ = cv2.findHomography(src, dst, cv2.RANSAC, 4.0)
+        return h_mat
+
+    best_seed = None
+    for seed_idx, candidates in pair_candidates:
+        for seed in candidates:
+            seed_h = seed["homography"]
+            selected = []
+            errs = []
+            for idx, pair_opts in pair_candidates:
+                scored = [(candidate_error(seed_h, cand)[0], cand) for cand in pair_opts]
+                scored.sort(key=lambda x: x[0])
+                if scored and scored[0][0] <= 12.0:
+                    selected.append((idx, scored[0][1]))
+                    errs.append(scored[0][0])
+            if len(selected) < 4:
                 continue
-            projected = cv2.perspectiveTransform(src.reshape(-1, 1, 2), h_mat).reshape(-1, 2)
-            err = np.linalg.norm(projected - dst, axis=1)
-            inlier_count = int(inliers.sum()) if inliers is not None else len(src)
-            score = (float(np.median(err)), float(np.mean(err)), -inlier_count)
-            if best is None or score < best["score"]:
-                best = {"candidate": cand, "score": score}
-        if best is not None:
-            selected.append((idx, best["candidate"]))
-            used.append(best["candidate"])
+            score = (-len(selected), float(np.median(errs)), float(np.mean(errs)), seed_idx)
+            if best_seed is None or score < best_seed["score"]:
+                best_seed = {"score": score, "selected": selected}
+
+    if best_seed is None:
+        return []
+
+    selected = best_seed["selected"]
+    for _ in range(10):
+        h_mat = fit_global(selected)
+        if h_mat is None:
+            break
+        next_selected = []
+        for idx, pair_opts in pair_candidates:
+            scored = []
+            for cand in pair_opts:
+                mean_err, max_err, _ = candidate_error(h_mat, cand)
+                scored.append((mean_err, max_err, cand))
+            scored.sort(key=lambda x: x[0])
+            if scored and scored[0][0] <= 8.0 and scored[0][1] <= 35.0:
+                next_selected.append((idx, scored[0][2]))
+        if len(next_selected) < 4:
+            break
+        same = (
+            [idx for idx, _ in next_selected] == [idx for idx, _ in selected]
+            and all(
+                a["q_order"] == b["q_order"] and a["g_order"] == b["g_order"]
+                for (_, a), (_, b) in zip(next_selected, selected)
+            )
+        )
+        selected = next_selected
+        if same:
+            break
+
     return selected
 
 
@@ -167,6 +210,10 @@ def print_homography_quality(mean_err, max_err, used_count, total_count):
         print("改善方法：重新拍攝時選「清空舊資料重新開始」，拍 10~15 張分散在桌面四角和中心，再重新計算。")
     if total_count > used_count:
         print(f"提醒：共有 {total_count} 組資料，只使用 {used_count} 組；被略過的照片請檢查是否棋盤不完整或模糊。")
+
+
+def homography_is_usable(mean_err, max_err, used_count):
+    return used_count >= 4 and mean_err <= 6.0 and max_err <= 50.0
 
 
 def main():
@@ -267,9 +314,16 @@ def main():
         "inliers": int(inliers.sum()) if inliers is not None else int(len(src)),
         "n_points": int(len(src)),
         "final_pair_errors": final_pair_errors,
+        "excluded_pair_indexes": [idx for idx, _ in pair_candidates if idx not in {item["index"] for item in used}],
         "used_pairs": used,
     }
-    out_json.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    usable = homography_is_usable(result["mean_error_px"], result["max_error_px"], len(used))
+    save_json = out_json
+    if not usable:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_json = out_json.with_name(f"{out_json.stem}_FAILED_{stamp}{out_json.suffix}")
+        result["not_applied_reason"] = "Calibration error is too high; existing active homography was not overwritten."
+    save_json.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
     first = used[0]["index"] - 1
     draw_preview(cv2.imread(str(pairs[first][0])), cv2.imread(str(pairs[first][1])),
@@ -285,7 +339,13 @@ def main():
         for item in worst:
             print(f"  pair {item['index']:03d}: mean={item['mean_error_px']:.2f}px max={item['max_error_px']:.2f}px")
     print_homography_quality(result["mean_error_px"], result["max_error_px"], len(used), len(pairs))
-    print(f"已輸出：{out_json}")
+    excluded = result["excluded_pair_indexes"]
+    if excluded:
+        print(f"自動排除配對：{', '.join(f'{idx:03d}' for idx in excluded)}")
+    if usable:
+        print(f"已輸出：{save_json}")
+    else:
+        print(f"未套用到正式檔，失敗診斷已輸出：{save_json}")
     print(f"預覽圖：{preview_dir / 'quality_to_gemini_preview.jpg'}")
 
 
