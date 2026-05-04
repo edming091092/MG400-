@@ -197,6 +197,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--index", type=int, default=None, help="robot_targets.json 裡的硬幣 index；不填則取第一顆 valid")
     ap.add_argument("--all", action="store_true", help="逐顆走過所有 valid_for_pick=true 的硬幣")
+    ap.add_argument("--fallback-first-valid", action="store_true", help="指定 index 重新辨識後不可取時，改用最新第一顆可取目標")
     ap.add_argument("--safe-z", type=float, default=100.0, help="只移到硬幣上方的安全 Z，高度 mm")
     ap.add_argument("--travel-z", type=float, default=150.0, help="XY 轉移時使用的高空 Z")
     ap.add_argument("--lower-z", type=float, default=None, help="可選：乾跑下降到此 Z；不開真空、不切 DO")
@@ -272,8 +273,19 @@ def main():
         else:
             matched = [t for t in targets if int(t.get("index", -1)) == args.index]
             if not matched:
-                raise RuntimeError(f"找不到 index={args.index} 且 valid_for_pick=true 的硬幣")
-            target = matched[0]
+                if args.fallback_first_valid:
+                    target = targets[0]
+                    print(
+                        f"[hover] Q{args.index} 重新辨識後已不是可取目標，"
+                        f"改用最新第一顆可取目標 Q{target.get('index')}"
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Q{args.index} 重新辨識後不是可取目標。"
+                        "可能原因：硬幣太靠近工作邊界、深度/座標無效，或重新辨識後排序改變。"
+                    )
+            else:
+                target = matched[0]
 
         z = float(args.safe_z)
         if args.all:
