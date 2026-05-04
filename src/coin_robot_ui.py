@@ -184,6 +184,12 @@ class CoinRobotUI(tk.Tk):
         self._display_image_offset = (0, 0)
         self._loaded_image_size = (0, 0)
         self._quality_cap = None
+        self._quality_thread = None
+        self._quality_stop = threading.Event()
+        self._quality_lock = threading.Lock()
+        self._quality_latest_frame = None
+        self._quality_latest_id = 0
+        self._quality_displayed_id = 0
         self._quality_preview_error_logged = False
         self.zoom = 1.0
         self.auto_preview = tk.BooleanVar(value=True)
@@ -194,7 +200,10 @@ class CoinRobotUI(tk.Tk):
         self._build_layout()
         self._reset_stale_action_status()
         self._load_targets()
-        self._load_latest_image()
+        if self.camera_view.get() == "Quality":
+            self._start_quality_preview_thread()
+        else:
+            self._load_latest_image()
         self.after(1000, self._tick)
         self.after(700, self._auto_preview_loop)
 
@@ -264,7 +273,7 @@ class CoinRobotUI(tk.Tk):
         ttk.Label(image_head, textvariable=self.vision_note_var, style="Panel.TLabel").grid(row=0, column=5, sticky="e")
         self.image_label = ttk.Label(image_panel, text=self._t("no_image"), anchor="center", style="Panel.TLabel")
         self.image_label.grid(row=1, column=0, sticky="nsew")
-        self.image_label.bind("<Configure>", lambda _e: self._load_latest_image(force=True))
+        self.image_label.bind("<Configure>", lambda _e: self._refresh_current_view())
         self.image_label.bind("<MouseWheel>", self._on_image_wheel)
 
         side_wrap = ttk.Frame(main, style="Panel.TFrame", width=310)
@@ -356,14 +365,16 @@ class CoinRobotUI(tk.Tk):
     def _tick(self):
         self._load_targets()
         self._load_action_status()
-        self._load_latest_image()
+        if self.camera_view.get() != "Quality":
+            self._load_latest_image()
         self.after(1000, self._tick)
 
     def _auto_preview_loop(self):
         if self.auto_preview.get() and not self.busy:
             if self.camera_view.get() == "Quality":
+                self._start_quality_preview_thread()
                 self._update_quality_live_frame()
-                self.after(45, self._auto_preview_loop)
+                self.after(30, self._auto_preview_loop)
                 return
             self._close_quality_preview()
             self._preview_only()
@@ -528,12 +539,21 @@ class CoinRobotUI(tk.Tk):
         return cap
 
     def _close_quality_preview(self):
+        self._quality_stop.set()
+        thread = self._quality_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=0.8)
+        self._quality_thread = None
         if self._quality_cap is not None:
             try:
                 self._quality_cap.release()
             except Exception:
                 pass
             self._quality_cap = None
+        with self._quality_lock:
+            self._quality_latest_frame = None
+            self._quality_latest_id = 0
+            self._quality_displayed_id = 0
 
     def _crop_quality_roi(self, frame):
         roi = self._load_config().get("quality_roi")
@@ -547,22 +567,35 @@ class CoinRobotUI(tk.Tk):
         y2 = max(y1 + 1, min(y2, h))
         return frame[y1:y2, x1:x2].copy()
 
+    def _start_quality_preview_thread(self):
+        if self._quality_thread is not None and self._quality_thread.is_alive():
+            return
+        self._quality_stop.clear()
+
+        def worker():
+            cap = self._open_quality_preview()
+            if cap is None:
+                if not self._quality_preview_error_logged:
+                    self.after(0, lambda: self._log("畫質相機開啟失敗"))
+                    self._quality_preview_error_logged = True
+                return
+            while not self._quality_stop.is_set():
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    with self._quality_lock:
+                        self._quality_latest_frame = frame
+                        self._quality_latest_id += 1
+                time.sleep(0.001)
+
+        self._quality_thread = threading.Thread(target=worker, daemon=True)
+        self._quality_thread.start()
+
     def _update_quality_live_frame(self):
-        cap = self._open_quality_preview()
-        if cap is None:
-            if not self._quality_preview_error_logged:
-                self._log("畫質相機開啟失敗")
-                self._quality_preview_error_logged = True
-            return
-        # DirectShow may keep a small frame queue. Drain it so the UI shows the
-        # newest available frame instead of briefly jumping back to older frames.
-        for _ in range(3):
-            cap.grab()
-        ok, frame = cap.retrieve()
-        if not ok or frame is None:
-            ok, frame = cap.read()
-        if not ok or frame is None:
-            return
+        with self._quality_lock:
+            if self._quality_latest_frame is None or self._quality_latest_id == self._quality_displayed_id:
+                return
+            frame = self._quality_latest_frame.copy()
+            self._quality_displayed_id = self._quality_latest_id
         frame = self._crop_quality_roi(frame)
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         self._display_pil_image(img, "quality-live")
@@ -570,19 +603,29 @@ class CoinRobotUI(tk.Tk):
     def _on_camera_view_change(self):
         if self.camera_view.get() != "Quality":
             self._close_quality_preview()
+            self._last_image_path = None
+            self._load_latest_image(force=True)
+            return
+        self._start_quality_preview_thread()
         self._last_image_path = None
-        self._load_latest_image(force=True)
+        self._update_quality_live_frame()
 
     def _on_close(self):
         self._close_quality_preview()
         self.destroy()
+
+    def _refresh_current_view(self):
+        if self.camera_view.get() == "Quality":
+            self._update_quality_live_frame()
+        else:
+            self._load_latest_image(force=True)
 
     def _on_image_wheel(self, event):
         if event.delta > 0:
             self.zoom = min(3.0, self.zoom * 1.15)
         else:
             self.zoom = max(1.0, self.zoom / 1.15)
-        self._load_latest_image(force=True)
+        self._refresh_current_view()
 
     def _load_action_status(self):
         if not ACTION_STATUS_FILE.exists():
