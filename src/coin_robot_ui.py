@@ -691,8 +691,10 @@ class CoinRobotUI(tk.Tk):
 
     def _refresh_current_view(self):
         if self.camera_view.get() == "Quality":
+            self._start_quality_preview_thread()
             self._update_quality_live_frame()
         elif self.camera_view.get() == "Combined":
+            self._start_quality_preview_thread()
             self._update_combined_live_frame()
         else:
             self._load_latest_image(force=True)
@@ -976,11 +978,15 @@ class CoinRobotUI(tk.Tk):
                     self.after(0, lambda: self._log(f"失敗：{title}\n{output[-1200:]}"))
                     self.after(0, lambda: messagebox.showerror("動作失敗", output[-1200:] or str(result.returncode)))
             finally:
-                if done_refresh:
-                    self.after(0, self._load_targets)
-                    self.after(0, self._refresh_current_view)
-                self.after(0, lambda: self._set_busy(False, self._t("ready")))
-                self.after(0, self._run_pending_robot_action)
+                def finish():
+                    if done_refresh:
+                        self._load_targets()
+                    self._set_busy(False, self._t("ready"))
+                    if done_refresh:
+                        self._refresh_current_view()
+                    self._run_pending_robot_action()
+
+                self.after(0, finish)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1070,7 +1076,7 @@ class CoinRobotUI(tk.Tk):
             idx = int(t["index"])
             if not self._confirm("移到硬幣上方", f"手臂會先回避相機、重新辨識，然後移到 Q{idx} 上方 Z=100。\n不開真空/DO。"):
                 return
-            cmd = [str(PYTHON), "hover_robot_target.py", "--index", str(idx), "--safe-z", "100", "--refresh-after-start", "--skip-start-if-close", "--yes"] + self._speed_args()
+            cmd = [str(PYTHON), "hover_robot_target.py", "--index", str(idx), "--safe-z", "100", "--refresh-after-start", "--refresh-max-age-sec", "60", "--skip-start-if-close", "--yes"] + self._speed_args()
             self._run_async(f"辨識後移到 Q{idx} 上方", cmd)
         self._run_robot_action_when_ready(action)
 
@@ -1078,7 +1084,7 @@ class CoinRobotUI(tk.Tk):
         def action():
             if not self._confirm("辨識後移到上方", "手臂會先回避相機、自動辨識，然後移到第一顆可取硬幣上方 Z=100。\n不開真空/DO。"):
                 return
-            cmd = [str(PYTHON), "hover_robot_target.py", "--safe-z", "100", "--refresh-after-start", "--skip-start-if-close", "--yes"] + self._speed_args()
+            cmd = [str(PYTHON), "hover_robot_target.py", "--safe-z", "100", "--refresh-after-start", "--refresh-max-age-sec", "60", "--skip-start-if-close", "--yes"] + self._speed_args()
             self._run_async("辨識後移到第一顆上方", cmd)
         self._run_robot_action_when_ready(action)
 
@@ -1091,7 +1097,7 @@ class CoinRobotUI(tk.Tk):
             idx = int(t["index"])
             if not self._confirm("下降到硬幣", f"手臂會先回避相機、重新辨識，然後下降 Q{idx} 到 Z=-156。\n不開真空/DO。"):
                 return
-            cmd = [str(PYTHON), "hover_robot_target.py", "--index", str(idx), "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--skip-start-if-close", "--yes"] + self._speed_args()
+            cmd = [str(PYTHON), "hover_robot_target.py", "--index", str(idx), "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--refresh-max-age-sec", "60", "--skip-start-if-close", "--yes"] + self._speed_args()
             self._run_async(f"辨識後下降 Q{idx}", cmd)
         self._run_robot_action_when_ready(action)
 
@@ -1099,7 +1105,7 @@ class CoinRobotUI(tk.Tk):
         def action():
             if not self._confirm("辨識後下降", "要執行：回避相機 -> 自動辨識 -> 第一顆可取硬幣 -> 下降到 Z=-156 嗎？\n不開真空/DO。"):
                 return
-            cmd = [str(PYTHON), "hover_robot_target.py", "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--skip-start-if-close", "--yes"] + self._speed_args()
+            cmd = [str(PYTHON), "hover_robot_target.py", "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--refresh-max-age-sec", "60", "--skip-start-if-close", "--yes"] + self._speed_args()
             self._run_async("辨識後下降第一顆", cmd)
         self._run_robot_action_when_ready(action)
 
@@ -1111,7 +1117,7 @@ class CoinRobotUI(tk.Tk):
                 return
             if not self._confirm("全部下降測試", f"要依序測試 {count} 顆可取硬幣嗎？\n會先回避相機、重新辨識，再逐顆下降到 Z=-156。\n不開真空/DO。"):
                 return
-            cmd = [str(PYTHON), "hover_robot_target.py", "--all", "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--skip-start-if-close", "--yes"] + self._speed_args()
+            cmd = [str(PYTHON), "hover_robot_target.py", "--all", "--safe-z", "100", "--lower-z", "-156", "--refresh-after-start", "--refresh-max-age-sec", "60", "--skip-start-if-close", "--yes"] + self._speed_args()
             self._run_async("辨識後逐顆下降", cmd)
         self._run_robot_action_when_ready(action)
 

@@ -79,6 +79,20 @@ def load_targets():
     return data, targets
 
 
+def targets_are_fresh(max_age_sec):
+    if max_age_sec <= 0 or not TARGETS_FILE.exists():
+        return False
+    age = time.time() - TARGETS_FILE.stat().st_mtime
+    if age > max_age_sec:
+        return False
+    try:
+        _data, targets = load_targets()
+    except Exception:
+        return False
+    print(f"[hover] 沿用 {age:.1f} 秒前已鎖定的辨識座標，跳過重新辨識 ({len(targets)} targets)")
+    return True
+
+
 def write_action_status(state, target=None, message="", error_code=None, robot_xyz=None, controller_response=None):
     payload = {"state": state, "message": message}
     if controller_response:
@@ -192,6 +206,7 @@ def main():
     ap.add_argument("--no-start-pose", action="store_true", help="不要先移到開始位置")
     ap.add_argument("--start-only", action="store_true", help="只移到開始位置，不讀硬幣目標")
     ap.add_argument("--refresh-after-start", action="store_true", help="先移到開始位置，再重新跑一次影像辨識，最後才去硬幣")
+    ap.add_argument("--refresh-max-age-sec", type=float, default=0.0, help="若 robot_targets.json 比此秒數更新，沿用已鎖定座標以加快動作")
     ap.add_argument("--skip-start-if-close", action="store_true", help="若目前已接近開始位置，就不再先移動一次")
     ap.add_argument("--no-return-start", action="store_true", help="動作結束後不要回開始位置")
     ap.add_argument("--yes", action="store_true", help="不等待確認，直接移動")
@@ -246,7 +261,7 @@ def main():
         if args.start_only:
             print("[hover] 已到開始位置")
             return
-        if args.refresh_after_start:
+        if args.refresh_after_start and not targets_are_fresh(float(args.refresh_max_age_sec)):
             refresh_targets_after_start()
 
         data, targets = load_targets()

@@ -39,7 +39,6 @@ ROBOT_TABLETOP_H_FILE = HERE / "robot_tabletop_homography.json"
 COIN_DEPTH_DIR = Path(r"C:\Users\user\Desktop\coin_depth")
 GEMINI_LIBS = Path(r"C:\Users\user\Desktop\sam3+座標轉換與夾取")
 ROBOT_DATA_DIR = GEMINI_LIBS / "data"
-SAM3_MODEL = r"C:\Users\user\Desktop\sam3.pt"
 CALIB_FILE = COIN_DEPTH_DIR / "calibration.json"
 
 for p in (GEMINI_LIBS,):
@@ -124,6 +123,7 @@ def load_config():
         "quality_min_axis": 12,
         "quality_max_axis": 180,
         "quality_detection_method": "sam3_ellipse",
+        "sam3_model_path": "",
         "quality_sam3_interval_frames": 30,
         "quality_diameter_history": 5,
         "quality_min_class_margin_mm": 0.45,
@@ -473,17 +473,53 @@ def is_reasonable_gemini_coin(meas, cfg):
 
 
 _sam3 = None
+_sam3_model_path = None
+
+
+def resolve_sam3_model(cfg=None):
+    """Find SAM3 model without depending on one hard-coded desktop location."""
+    candidates = []
+    for key in ("SAM3_MODEL", "SAM3_MODEL_PATH"):
+        value = os.environ.get(key)
+        if value:
+            candidates.append(Path(value))
+    if cfg and cfg.get("sam3_model_path"):
+        candidates.append(Path(str(cfg["sam3_model_path"])))
+    candidates.extend([
+        HERE / "sam3.pt",
+        HERE.parent / "sam3.pt",
+        Path.home() / "Desktop" / "sam3.pt",
+        Path.home() / "Desktop" / "專題" / "sam3.pt",
+    ])
+    seen = set()
+    checked = []
+    for path in candidates:
+        path = path.expanduser()
+        key = str(path).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        checked.append(str(path))
+        if path.exists():
+            return str(path)
+    raise FileNotFoundError(
+        "找不到 SAM3 模型 sam3.pt。\n"
+        "請把模型放到 C:\\Users\\user\\Desktop\\sam3.pt，"
+        "或在 dual_camera_config.json 設定 sam3_model_path。\n"
+        "已檢查：\n" + "\n".join(f"  - {p}" for p in checked)
+    )
 
 
 def get_sam3():
-    global _sam3
+    global _sam3, _sam3_model_path
     if _sam3 is None:
-        print("載入 SAM3...")
+        _sam3_model_path = resolve_sam3_model(load_config())
+        print(f"載入 SAM3: {_sam3_model_path}")
         from ultralytics.models.sam import SAM3SemanticPredictor
 
         _sam3 = SAM3SemanticPredictor(
             overrides=dict(
-                model=SAM3_MODEL,
+                model=_sam3_model_path,
                 task="segment",
                 mode="predict",
                 conf=0.1,
