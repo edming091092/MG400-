@@ -187,6 +187,7 @@ class CoinRobotUI(tk.Tk):
 
         self._build_styles()
         self._build_layout()
+        self._reset_stale_action_status()
         self._load_targets()
         self._load_latest_image()
         self.after(1000, self._tick)
@@ -512,6 +513,27 @@ class CoinRobotUI(tk.Tk):
             if sig != self.last_failure_signature:
                 self.last_failure_signature = sig
                 self._show_robot_failure(data)
+
+    def _reset_stale_action_status(self):
+        if not ACTION_STATUS_FILE.exists():
+            return
+        try:
+            data = json.loads(ACTION_STATUS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        state = str(data.get("state", "idle"))
+        if state not in ("failed", "done", "return_start"):
+            return
+        idle_status = {
+            "state": "idle",
+            "message": "UI started; previous robot action status cleared",
+            "requires_human_intervention": False,
+        }
+        try:
+            ACTION_STATUS_FILE.write_text(json.dumps(idle_status, indent=2, ensure_ascii=False), encoding="utf-8")
+            self.last_failure_signature = json.dumps(idle_status, sort_keys=True, ensure_ascii=False)
+        except Exception as exc:
+            self._log(f"動作狀態重設失敗：{exc}")
 
     def _show_robot_failure(self, data):
         t = data.get("target") or {}
