@@ -202,6 +202,8 @@ class CoinRobotUI(tk.Tk):
         self.auto_preview = tk.BooleanVar(value=True)
         self.move_speed_var = tk.IntVar(value=int(self.ui_config.get("ui_move_speed", 40)))
         self.lower_speed_var = tk.IntVar(value=int(self.ui_config.get("ui_lower_speed", 25)))
+        self.pick_offset_x_var = tk.DoubleVar(value=float(self.ui_config.get("robot_target_offset_x_mm", 0.0)))
+        self.pick_offset_y_var = tk.DoubleVar(value=float(self.ui_config.get("robot_target_offset_y_mm", 0.0)))
 
         self._build_styles()
         self._build_layout()
@@ -282,6 +284,7 @@ class CoinRobotUI(tk.Tk):
         self.image_label.grid(row=1, column=0, sticky="nsew")
         self.image_label.bind("<Configure>", lambda _e: self._refresh_current_view())
         self.image_label.bind("<MouseWheel>", self._on_image_wheel)
+        self.image_label.bind("<Button-1>", self._on_image_click)
 
         side_wrap = ttk.Frame(main, style="Panel.TFrame", width=310)
         side_wrap.grid(row=0, column=1, sticky="ns")
@@ -323,22 +326,34 @@ class CoinRobotUI(tk.Tk):
         ttk.Button(side, text=self._t("move_clear"), command=self._move_start_pose).grid(row=11, column=0, sticky="ew", pady=(10, 4))
         ttk.Button(side, text=self._t("hover_first"), command=self._hover_first_cycle).grid(row=12, column=0, sticky="ew", pady=(12, 4))
         ttk.Button(side, text=self._t("lower_first"), style="Danger.TButton", command=self._safe_cycle).grid(row=13, column=0, sticky="ew", pady=4)
+        ttk.Label(side, text="夾取偏移校正", style="Panel.TLabel", font=("Segoe UI", 10, "bold")).grid(row=14, column=0, sticky="w", pady=(12, 2))
+        self.pick_offset_label = tk.StringVar()
+        ttk.Label(side, textvariable=self.pick_offset_label, style="Panel.TLabel").grid(row=15, column=0, sticky="ew")
+        offset_buttons = ttk.Frame(side, style="Panel.TFrame")
+        offset_buttons.grid(row=16, column=0, sticky="ew", pady=(4, 8))
+        for c in range(4):
+            offset_buttons.columnconfigure(c, weight=1)
+        ttk.Button(offset_buttons, text="X -1", command=lambda: self._nudge_pick_offset(-1.0, 0.0)).grid(row=0, column=0, sticky="ew", padx=1)
+        ttk.Button(offset_buttons, text="X +1", command=lambda: self._nudge_pick_offset(1.0, 0.0)).grid(row=0, column=1, sticky="ew", padx=1)
+        ttk.Button(offset_buttons, text="Y -1", command=lambda: self._nudge_pick_offset(0.0, -1.0)).grid(row=0, column=2, sticky="ew", padx=1)
+        ttk.Button(offset_buttons, text="Y +1", command=lambda: self._nudge_pick_offset(0.0, 1.0)).grid(row=0, column=3, sticky="ew", padx=1)
+        self._update_pick_offset_label()
         if self.ui_mode == "engineer":
-            ttk.Separator(side).grid(row=14, column=0, sticky="ew", pady=10)
-            ttk.Button(side, text=self._t("set_roi"), command=self._select_roi).grid(row=15, column=0, sticky="ew", pady=4)
-            ttk.Button(side, text=self._t("refresh"), command=self._refresh_vision).grid(row=16, column=0, sticky="ew", pady=4)
-            ttk.Button(side, text=self._t("hover_selected"), command=self._hover_selected).grid(row=17, column=0, sticky="ew", pady=4)
-            ttk.Button(side, text=self._t("lower_selected"), style="Danger.TButton", command=self._dry_lower_selected).grid(row=18, column=0, sticky="ew", pady=4)
-            ttk.Button(side, text=self._t("lower_all"), style="Danger.TButton", command=self._dry_lower_all).grid(row=19, column=0, sticky="ew", pady=4)
+            ttk.Separator(side).grid(row=17, column=0, sticky="ew", pady=10)
+            ttk.Button(side, text=self._t("set_roi"), command=self._select_roi).grid(row=18, column=0, sticky="ew", pady=4)
+            ttk.Button(side, text=self._t("refresh"), command=self._refresh_vision).grid(row=19, column=0, sticky="ew", pady=4)
+            ttk.Button(side, text=self._t("hover_selected"), command=self._hover_selected).grid(row=20, column=0, sticky="ew", pady=4)
+            ttk.Button(side, text=self._t("lower_selected"), style="Danger.TButton", command=self._dry_lower_selected).grid(row=21, column=0, sticky="ew", pady=4)
+            ttk.Button(side, text=self._t("lower_all"), style="Danger.TButton", command=self._dry_lower_all).grid(row=22, column=0, sticky="ew", pady=4)
 
-        ttk.Separator(side).grid(row=18, column=0, sticky="ew", pady=12)
-        ttk.Label(side, text=self._t("current_target"), style="Panel.TLabel", font=("Segoe UI", 12, "bold")).grid(row=20, column=0, sticky="w")
+        ttk.Separator(side).grid(row=23, column=0, sticky="ew", pady=12)
+        ttk.Label(side, text=self._t("current_target"), style="Panel.TLabel", font=("Segoe UI", 12, "bold")).grid(row=24, column=0, sticky="w")
         self.selected_var = tk.StringVar(value=self._t("no_target_selected"))
-        ttk.Label(side, textvariable=self.selected_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=20, column=0, sticky="ew", pady=(8, 0))
+        ttk.Label(side, textvariable=self.selected_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=25, column=0, sticky="ew", pady=(8, 0))
         self.action_var = tk.StringVar(value=self._t("current_action_idle"))
-        ttk.Label(side, textvariable=self.action_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=21, column=0, sticky="ew", pady=(10, 0))
+        ttk.Label(side, textvariable=self.action_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=26, column=0, sticky="ew", pady=(10, 0))
         self.note_var = tk.StringVar(value=self._t("dry_only"))
-        ttk.Label(side, textvariable=self.note_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=22, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(side, textvariable=self.note_var, style="Panel.TLabel", wraplength=280, justify="left").grid(row=27, column=0, sticky="ew", pady=(12, 0))
 
         table_panel = ttk.Frame(main, style="Panel.TFrame", padding=10)
         table_panel.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -556,6 +571,28 @@ class CoinRobotUI(tk.Tk):
         self.image_label.configure(image=self._photo, text="")
         self._last_image_path = source_key
 
+    def _draw_target_overlay_cv(self, frame, view):
+        if frame is None:
+            return frame
+        out = frame.copy()
+        cfg = self._load_config()
+        for t in self.targets_data.get("targets", []):
+            pos = self._target_view_xy(t, view, cfg)
+            if pos is None:
+                continue
+            x, y = int(round(pos[0])), int(round(pos[1]))
+            if x < 0 or y < 0 or x >= out.shape[1] or y >= out.shape[0]:
+                continue
+            valid = bool(t.get("valid_for_pick"))
+            color = (0, 255, 80) if valid else (0, 210, 255)
+            status = "OK" if valid else "CHECK"
+            cv2.drawMarker(out, (x, y), color, cv2.MARKER_CROSS, 18, 2, cv2.LINE_AA)
+            cv2.circle(out, (x, y), 14, color, 2, cv2.LINE_AA)
+            label = f"Q{t.get('index')} {t.get('label_name', '?')} {status}"
+            cv2.rectangle(out, (x + 10, max(0, y - 24)), (min(out.shape[1] - 1, x + 150), max(18, y - 2)), (25, 25, 25), -1)
+            cv2.putText(out, label, (x + 14, max(16, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv2.LINE_AA)
+        return out
+
     def _resize_pil_to_height(self, img, height):
         if img.height <= 0:
             return img
@@ -658,6 +695,7 @@ class CoinRobotUI(tk.Tk):
                 return
             frame = self._quality_latest_frame.copy()
             self._quality_displayed_id = self._quality_latest_id
+        frame = self._draw_target_overlay_cv(frame, "Quality")
         frame = self._crop_quality_roi(frame)
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         self._display_pil_image(img, "quality-live")
@@ -685,6 +723,7 @@ class CoinRobotUI(tk.Tk):
         frame, frame_id = self._latest_quality_frame_copy()
         if frame is None:
             return
+        frame = self._draw_target_overlay_cv(frame, "Quality")
         frame = self._crop_quality_roi(frame)
         quality_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         gemini_img = self._latest_gemini_preview_pil()
@@ -829,6 +868,44 @@ class CoinRobotUI(tk.Tk):
         cfg.update(values)
         CONFIG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def _update_pick_offset_label(self):
+        if hasattr(self, "pick_offset_label"):
+            self.pick_offset_label.set(
+                f"目前 X={self.pick_offset_x_var.get():+.1f}mm  Y={self.pick_offset_y_var.get():+.1f}mm"
+            )
+
+    def _apply_pick_offset_to_current_targets(self, dx, dy):
+        if not TARGETS_FILE.exists() or (abs(dx) < 1e-9 and abs(dy) < 1e-9):
+            return
+        try:
+            data = json.loads(TARGETS_FILE.read_text(encoding="utf-8"))
+            for t in data.get("targets", []):
+                if t.get("robot_x_mm") is not None:
+                    t["robot_x_mm"] = round(float(t["robot_x_mm"]) + dx, 3)
+                if t.get("robot_y_mm") is not None:
+                    t["robot_y_mm"] = round(float(t["robot_y_mm"]) + dy, 3)
+            TARGETS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"更新目前目標偏移失敗：{exc}")
+
+    def _set_pick_offset(self, x, y, update_current=True):
+        old_x = float(self.pick_offset_x_var.get())
+        old_y = float(self.pick_offset_y_var.get())
+        new_x = float(x)
+        new_y = float(y)
+        self.pick_offset_x_var.set(new_x)
+        self.pick_offset_y_var.set(new_y)
+        self._save_config_values(robot_target_offset_x_mm=new_x, robot_target_offset_y_mm=new_y)
+        if update_current:
+            self._apply_pick_offset_to_current_targets(new_x - old_x, new_y - old_y)
+        self._update_pick_offset_label()
+        self._load_targets()
+        self._refresh_current_view()
+        self._log(f"夾取偏移已更新：X={new_x:+.1f}mm  Y={new_y:+.1f}mm")
+
+    def _nudge_pick_offset(self, dx, dy):
+        self._set_pick_offset(self.pick_offset_x_var.get() + dx, self.pick_offset_y_var.get() + dy)
+
     def _open_settings(self):
         win = tk.Toplevel(self)
         win.title(self._t("settings"))
@@ -841,6 +918,8 @@ class CoinRobotUI(tk.Tk):
         lang_var = tk.StringVar(value=self.ui_language)
         move_var = tk.IntVar(value=int(self.move_speed_var.get()))
         lower_var = tk.IntVar(value=int(self.lower_speed_var.get()))
+        offset_x_var = tk.DoubleVar(value=float(self.pick_offset_x_var.get()))
+        offset_y_var = tk.DoubleVar(value=float(self.pick_offset_y_var.get()))
 
         frame = ttk.Frame(win, style="Panel.TFrame", padding=16)
         frame.grid(row=0, column=0, sticky="nsew")
@@ -870,6 +949,11 @@ class CoinRobotUI(tk.Tk):
         lower_label = ttk.Label(frame, text=f"{lower_var.get()}%", style="Panel.TLabel")
         lower_label.grid(row=3, column=2, padx=(8, 0))
 
+        ttk.Label(frame, text="夾取 X 偏移 mm", style="Panel.TLabel").grid(row=4, column=0, sticky="w", pady=6)
+        ttk.Spinbox(frame, from_=-60.0, to=60.0, increment=0.5, textvariable=offset_x_var, width=8).grid(row=4, column=1, sticky="w", pady=6)
+        ttk.Label(frame, text="夾取 Y 偏移 mm", style="Panel.TLabel").grid(row=5, column=0, sticky="w", pady=6)
+        ttk.Spinbox(frame, from_=-60.0, to=60.0, increment=0.5, textvariable=offset_y_var, width=8).grid(row=5, column=1, sticky="w", pady=6)
+
         def update_speed_labels(_=None):
             move_label.configure(text=f"{int(move_var.get())}%")
             lower_label.configure(text=f"{int(lower_var.get())}%")
@@ -878,19 +962,28 @@ class CoinRobotUI(tk.Tk):
         lower_scale.configure(command=update_speed_labels)
 
         buttons = ttk.Frame(frame, style="Panel.TFrame")
-        buttons.grid(row=4, column=0, columnspan=3, sticky="e", pady=(14, 0))
+        buttons.grid(row=6, column=0, columnspan=3, sticky="e", pady=(14, 0))
 
         def apply_settings():
             self.ui_mode = mode_var.get()
             self.ui_language = lang_var.get()
             self.move_speed_var.set(int(move_var.get()))
             self.lower_speed_var.set(int(lower_var.get()))
+            old_x = float(self.pick_offset_x_var.get())
+            old_y = float(self.pick_offset_y_var.get())
+            new_x = float(offset_x_var.get())
+            new_y = float(offset_y_var.get())
+            self.pick_offset_x_var.set(new_x)
+            self.pick_offset_y_var.set(new_y)
             self._save_config_values(
                 ui_mode=self.ui_mode,
                 ui_language=self.ui_language,
                 ui_move_speed=int(self.move_speed_var.get()),
                 ui_lower_speed=int(self.lower_speed_var.get()),
+                robot_target_offset_x_mm=new_x,
+                robot_target_offset_y_mm=new_y,
             )
+            self._apply_pick_offset_to_current_targets(new_x - old_x, new_y - old_y)
             win.destroy()
             self.title(self._t("title"))
             self._build_layout()
@@ -949,6 +1042,11 @@ class CoinRobotUI(tk.Tk):
             qy = target.get("quality_y_px")
             if qx is None or qy is None:
                 return None
+            if self._last_image_path == "quality-live":
+                roi = cfg.get("quality_roi")
+                if roi:
+                    x1, y1, _x2, _y2 = [float(v) for v in roi]
+                    return float(qx) - x1, float(qy) - y1
             return float(qx), float(qy)
         if view == "Gemini":
             gx = target.get("gemini_x_px")

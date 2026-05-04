@@ -925,6 +925,20 @@ def draw_gemini(color_bgr, coins, detecting, snapshot_state, intrinsics, quality
     return disp
 
 
+def is_quality_pick_valid(e, cfg):
+    xyz = e.get("robot_xyz_mm")
+    if xyz is None:
+        return False
+    x_mm = float(xyz[0]) + float(cfg.get("robot_target_offset_x_mm", 0.0))
+    y_mm = float(xyz[1]) + float(cfg.get("robot_target_offset_y_mm", 0.0))
+    return (
+        e.get("predicted_class", "?") != "?"
+        and e.get("depth_z_mm") is not None
+        and PICK_X_MIN <= x_mm <= PICK_X_MAX
+        and PICK_Y_MIN <= y_mm <= PICK_Y_MAX
+    )
+
+
 def draw_quality(frame, cfg, score, cam_status, ellipses=None, detecting=False):
     if frame is None:
         out = np.zeros((DISP_H, QUALITY_DISP_W, 3), dtype=np.uint8)
@@ -939,7 +953,10 @@ def draw_quality(frame, cfg, score, cam_status, ellipses=None, detecting=False):
     for idx, e in enumerate(ellipses or [], 1):
         center = (int(round(e["cx"])), int(round(e["cy"])))
         axes = (max(1, int(round(e["axes"][0] / 2))), max(1, int(round(e["axes"][1] / 2))))
-        cv2.ellipse(out, center, axes, e["angle"], 0, 360, (0, 255, 120), 1, cv2.LINE_AA)
+        valid = is_quality_pick_valid(e, cfg)
+        color = (0, 255, 120) if valid else (0, 210, 255)
+        status_text = "OK" if valid else "CHECK"
+        cv2.ellipse(out, center, axes, e["angle"], 0, 360, color, 2, cv2.LINE_AA)
         cv2.circle(out, center, 3, (255, 255, 255), -1)
         depth_text = ""
         if e.get("depth_z_mm") is not None:
@@ -954,8 +971,8 @@ def draw_quality(frame, cfg, score, cam_status, ellipses=None, detecting=False):
         if e.get("world_xyz_mm") is not None:
             x, y, z = e["world_xyz_mm"]
             xyz_text = f" XYZ=({x:.0f},{y:.0f},{z:.0f})"
-        cv2.putText(out, f"Q{idx}{class_text} {e.get('source','')} r={e['axis_ratio']:.2f}{depth_text}{diam_text}", (center[0] + 8, center[1] - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 1, cv2.LINE_AA)
+        cv2.putText(out, f"Q{idx} {status_text}{class_text} {e.get('source','')} r={e['axis_ratio']:.2f}{depth_text}{diam_text}", (center[0] + 8, center[1] - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
         if xyz_text:
             cv2.putText(out, xyz_text, (center[0] + 8, center[1] + 12),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 1, cv2.LINE_AA)
@@ -1080,12 +1097,7 @@ def write_robot_targets(q_ellipses, counts, total_value, cfg=None):
             continue
         x_mm = float(xyz[0]) + offset_x
         y_mm = float(xyz[1]) + offset_y
-        valid_for_pick = (
-            e.get("predicted_class", "?") != "?"
-            and e.get("depth_z_mm") is not None
-            and PICK_X_MIN <= x_mm <= PICK_X_MAX
-            and PICK_Y_MIN <= y_mm <= PICK_Y_MAX
-        )
+        valid_for_pick = is_quality_pick_valid(e, cfg)
         targets.append({
             "index": idx,
             "label": e.get("predicted_class", "?"),
