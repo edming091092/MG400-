@@ -22,7 +22,7 @@ C:\Users\user\Desktop\coin_classifier\run_coin_robot_ui.bat
 ## 資料夾內容
 
 - `src/`：主要 Python 程式，已把目前的 JSON 設定也複製一份放在這裡，方便直接執行。
-- `run/`：原本開發過程使用的 bat 檔備份。
+- `run/`：一鍵啟動檔，已分成 `operator/`、`calibration/`、`engineering/`。
 - `config/`：目前標定與 UI 使用設定。
 - `calibration/`：部分標定預覽、除錯圖片與歷史資料。
 - `external_core/`：從 `sam3+座標轉換與夾取/core` 複製過來的相機、手臂、轉換模組備份。
@@ -120,8 +120,8 @@ Stereo extrinsics：
 
 需要重做：
 
-1. Quality camera 內參如果焦距、解析度、鏡頭設定改很多，重跑 `run_quality_calib.bat` 或 `src/capture_quality_calib.py` + `src/calibrate_camera.py`。
-2. Quality 到 Gemini 對應一定要重做：拍棋盤格平放桌面、多個位置，跑 `run_quality_to_gemini_calib.bat` 或 `src/calibrate_quality_to_gemini_homography.py`。
+1. Quality camera 內參如果焦距、解析度、鏡頭設定改很多，重跑 `run/calibration/拍攝畫質相機內參棋盤.bat` + `run/calibration/計算畫質相機內參.bat`。
+2. Quality 到 Gemini 對應一定要重做：拍棋盤格平放桌面、多個位置，跑 `run/calibration/拍攝雙相機同步棋盤.bat` + `run/calibration/計算畫質到深度相機對位.bat`。
 
 不一定需要重做：
 

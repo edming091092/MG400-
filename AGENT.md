@@ -22,6 +22,14 @@ Original development entry:
 C:\Users\user\Desktop\coin_classifier\run_coin_robot_ui.bat
 ```
 
+Organized package launchers live in:
+
+```text
+run/operator/開啟主程式.bat
+run/calibration/
+run/engineering/
+```
+
 Main UI source:
 
 ```text
