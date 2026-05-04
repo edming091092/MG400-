@@ -191,6 +191,10 @@ class CoinRobotUI(tk.Tk):
         self._quality_latest_id = 0
         self._quality_displayed_id = 0
         self._quality_preview_error_logged = False
+        self._preview_request_times = {}
+        self._gemini_preview_pil = None
+        self._gemini_preview_mtime = 0.0
+        self._last_gemini_preview_request = 0.0
         self.zoom = 1.0
         self.auto_preview = tk.BooleanVar(value=True)
         self.move_speed_var = tk.IntVar(value=int(self.ui_config.get("ui_move_speed", 40)))
@@ -365,7 +369,7 @@ class CoinRobotUI(tk.Tk):
     def _tick(self):
         self._load_targets()
         self._load_action_status()
-        if self.camera_view.get() != "Quality":
+        if self.camera_view.get() not in ("Quality", "Combined"):
             self._load_latest_image()
         self.after(1000, self._tick)
 
@@ -375,6 +379,15 @@ class CoinRobotUI(tk.Tk):
                 self._start_quality_preview_thread()
                 self._update_quality_live_frame()
                 self.after(30, self._auto_preview_loop)
+                return
+            if self.camera_view.get() == "Combined":
+                self._start_quality_preview_thread()
+                now = time.time()
+                if now - self._last_gemini_preview_request > 1.2:
+                    self._last_gemini_preview_request = now
+                    self._preview_only("Gemini")
+                self._update_combined_live_frame()
+                self.after(35, self._auto_preview_loop)
                 return
             self._close_quality_preview()
             self._preview_only()
@@ -465,12 +478,16 @@ class CoinRobotUI(tk.Tk):
                 return preview
         if self.camera_view.get() == "Gemini":
             preview = OUT_DIR / "live_preview_gemini.jpg"
-            if preview.exists():
+            min_time = self._preview_request_times.get("Gemini", 0.0)
+            if preview.exists() and preview.stat().st_mtime >= min_time:
                 return preview
+            return None
         if self.camera_view.get() == "Combined":
             preview = OUT_DIR / "live_preview_combined.jpg"
-            if preview.exists():
+            min_time = self._preview_request_times.get("Combined", 0.0)
+            if preview.exists() and preview.stat().st_mtime >= min_time:
                 return preview
+            return None
         prefix = {
             "Gemini": "gemini_view_*.jpg",
             "Quality": "quality_view_*.jpg",
@@ -480,6 +497,11 @@ class CoinRobotUI(tk.Tk):
         if not files and prefix != "dual_camera_snapshot_*.jpg":
             files = sorted(OUT_DIR.glob("dual_camera_snapshot_*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
         return files[0] if files else None
+
+    def _show_preview_message(self, text):
+        self._photo = None
+        self._last_image_path = None
+        self.image_label.configure(image="", text=text)
 
     def _display_pil_image(self, img, source_key=None):
         original_size = img.size
@@ -506,6 +528,12 @@ class CoinRobotUI(tk.Tk):
         self._photo = ImageTk.PhotoImage(img)
         self.image_label.configure(image=self._photo, text="")
         self._last_image_path = source_key
+
+    def _resize_pil_to_height(self, img, height):
+        if img.height <= 0:
+            return img
+        width = max(1, int(img.width * (height / img.height)))
+        return img.resize((width, height), Image.Resampling.LANCZOS)
 
     def _load_latest_image(self, force=False):
         path = self._latest_snapshot()
@@ -600,11 +628,58 @@ class CoinRobotUI(tk.Tk):
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         self._display_pil_image(img, "quality-live")
 
+    def _latest_quality_frame_copy(self):
+        with self._quality_lock:
+            if self._quality_latest_frame is None:
+                return None, self._quality_latest_id
+            return self._quality_latest_frame.copy(), self._quality_latest_id
+
+    def _latest_gemini_preview_pil(self):
+        path = OUT_DIR / "live_preview_gemini.jpg"
+        min_time = self._preview_request_times.get("Gemini", 0.0)
+        if path.exists():
+            mtime = path.stat().st_mtime
+            if mtime >= min_time and mtime != self._gemini_preview_mtime:
+                try:
+                    self._gemini_preview_pil = Image.open(path).convert("RGB")
+                    self._gemini_preview_mtime = mtime
+                except Exception as exc:
+                    self._log(f"深度相機預覽載入失敗：{exc}")
+        return self._gemini_preview_pil
+
+    def _update_combined_live_frame(self):
+        frame, frame_id = self._latest_quality_frame_copy()
+        if frame is None:
+            return
+        frame = self._crop_quality_roi(frame)
+        quality_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        gemini_img = self._latest_gemini_preview_pil()
+        target_h = 540
+        quality_img = self._resize_pil_to_height(quality_img, target_h)
+        if gemini_img is None:
+            gemini_img = Image.new("RGB", (max(1, int(target_h * 16 / 9)), target_h), "#050505")
+        else:
+            gemini_img = self._resize_pil_to_height(gemini_img, target_h)
+        gap = 8
+        combined = Image.new("RGB", (quality_img.width + gap + gemini_img.width, target_h), "#000000")
+        combined.paste(quality_img, (0, 0))
+        combined.paste(gemini_img, (quality_img.width + gap, 0))
+        self._quality_displayed_id = frame_id
+        self._display_pil_image(combined, f"combined-live-{frame_id}-{self._gemini_preview_mtime}")
+
     def _on_camera_view_change(self):
         if self.camera_view.get() != "Quality":
-            self._close_quality_preview()
             self._last_image_path = None
-            self._load_latest_image(force=True)
+            if self.camera_view.get() == "Combined":
+                self._start_quality_preview_thread()
+                self._show_preview_message("正在開啟深度相機...")
+                self._last_gemini_preview_request = time.time()
+                self._preview_only("Gemini")
+                self._update_combined_live_frame()
+            else:
+                self._close_quality_preview()
+                self._show_preview_message("正在開啟相機...")
+                self._preview_only()
             return
         self._start_quality_preview_thread()
         self._last_image_path = None
@@ -617,6 +692,8 @@ class CoinRobotUI(tk.Tk):
     def _refresh_current_view(self):
         if self.camera_view.get() == "Quality":
             self._update_quality_live_frame()
+        elif self.camera_view.get() == "Combined":
+            self._update_combined_live_frame()
         else:
             self._load_latest_image(force=True)
 
@@ -772,7 +849,7 @@ class CoinRobotUI(tk.Tk):
             self.title(self._t("title"))
             self._build_layout()
             self._load_targets()
-            self._load_latest_image(force=True)
+            self._refresh_current_view()
 
         ttk.Button(buttons, text=self._t("cancel"), command=win.destroy).grid(row=0, column=0, padx=(0, 8))
         ttk.Button(buttons, text=self._t("save"), command=apply_settings).grid(row=0, column=1)
@@ -881,6 +958,7 @@ class CoinRobotUI(tk.Tk):
             if not silent:
                 messagebox.showinfo("忙碌中", "上一個動作還在執行。")
             return
+        self._close_quality_preview()
         self._set_busy(True, title)
         if not silent:
             self._log(f"開始：{title}")
@@ -900,22 +978,24 @@ class CoinRobotUI(tk.Tk):
             finally:
                 if done_refresh:
                     self.after(0, self._load_targets)
-                    self.after(0, lambda: self._load_latest_image(force=True))
+                    self.after(0, self._refresh_current_view)
                 self.after(0, lambda: self._set_busy(False, self._t("ready")))
                 self.after(0, self._run_pending_robot_action)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _run_preview_async(self):
+    def _run_preview_async(self, view=None):
         if self.preview_busy:
             return
         self.preview_busy = True
-        view = self.camera_view.get()
+        view = view or self.camera_view.get()
+        active_view = self.camera_view.get()
+        self._preview_request_times[view] = time.time()
         def worker():
             try:
                 result = subprocess.run([str(PYTHON), "camera_preview_once.py", "--view", view], cwd=str(HERE), text=True, capture_output=True, encoding="utf-8", errors="replace")
                 if result.returncode == 0:
-                    self.after(0, lambda: self._load_latest_image(force=True))
+                    self.after(0, lambda expected=active_view: self._refresh_current_view() if self.camera_view.get() == expected else None)
                 else:
                     self.after(0, lambda: self._log("相機預覽失敗"))
             finally:
@@ -978,8 +1058,8 @@ class CoinRobotUI(tk.Tk):
         cmd = [str(PYTHON), "dual_camera_live.py", "--save-once", "--fast", "--quality-only"]
         self._run_async("重新辨識", cmd, silent=silent)
 
-    def _preview_only(self):
-        self._run_preview_async()
+    def _preview_only(self, view=None):
+        self._run_preview_async(view=view)
 
     def _hover_selected(self):
         def action():
