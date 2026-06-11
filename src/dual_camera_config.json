@@ -85,6 +85,11 @@
   "yolo_export_split": "train",
   "yolo_export_min_confidence": 0.25,
   "yolo_export_include_unknown": false,
+  "yolo_export_sources": [
+    "sam3",
+    "sam3_fallback"
+  ],
+  "yolo_export_metadata_enabled": true,
   "quality_diameter_history": 5,
   "quality_min_class_margin_mm": 0.45,
   "top_coin_visible_weight": 0.72,

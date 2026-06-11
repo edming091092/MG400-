@@ -184,6 +184,8 @@ def load_config():
         "yolo_export_split": "train",
         "yolo_export_min_confidence": 0.25,
         "yolo_export_include_unknown": False,
+        "yolo_export_sources": ["sam3", "sam3_fallback"],
+        "yolo_export_metadata_enabled": True,
         "sam3_model_path": "",
         "quality_sam3_interval_frames": 30,
         "quality_save_once_frames": 5,
@@ -825,6 +827,44 @@ def write_yolo_data_yaml(dataset_dir):
     yaml_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _cfg_list(value, default=None):
+    if value is None:
+        value = default or []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(part).strip() for part in value if str(part).strip()]
+    return []
+
+
+def _export_source_allowed(source, cfg):
+    allowed = [s.lower() for s in _cfg_list(cfg.get("yolo_export_sources"), ["sam3", "sam3_fallback"])]
+    if not allowed or "all" in allowed or "*" in allowed:
+        return True
+    return str(source or "").lower() in allowed
+
+
+def _append_yolo_export_metadata(dataset_dir, split, ts, image_name, label_name, preview_name, q_frame, rows_meta, cfg):
+    if not bool(cfg.get("yolo_export_metadata_enabled", True)):
+        return
+    metadata_dir = dataset_dir / "metadata" / split
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    h, w = q_frame.shape[:2]
+    record = {
+        "timestamp": ts,
+        "image": f"images/{split}/{image_name}",
+        "label": f"labels/{split}/{label_name}",
+        "preview": f"previews/{split}/{preview_name}",
+        "width": int(w),
+        "height": int(h),
+        "detection_method": str(cfg.get("quality_detection_method", "")),
+        "export_sources": _cfg_list(cfg.get("yolo_export_sources"), ["sam3", "sam3_fallback"]),
+        "labels": rows_meta,
+    }
+    with (metadata_dir / "exports.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def export_yolo_dataset_sample(q_frame, q_ellipses, cfg, ts):
     if q_frame is None or not cfg.get("yolo_export_enabled", True):
         return 0
@@ -846,8 +886,12 @@ def export_yolo_dataset_sample(q_frame, q_ellipses, cfg, ts):
     min_conf = float(cfg.get("yolo_export_min_confidence", 0.25))
     include_unknown = bool(cfg.get("yolo_export_include_unknown", False))
     rows = []
+    rows_meta = []
     preview = q_frame.copy()
     for e in q_ellipses or []:
+        source = e.get("source")
+        if not _export_source_allowed(source, cfg):
+            continue
         label = e.get("predicted_class", "?")
         if label == "?" and not include_unknown:
             continue
@@ -867,6 +911,21 @@ def export_yolo_dataset_sample(q_frame, q_ellipses, cfg, ts):
         y1 = int(round((yc - bh / 2.0) * h))
         x2 = int(round((xc + bw / 2.0) * w))
         y2 = int(round((yc + bh / 2.0) * h))
+        rows_meta.append({
+            "class_id": int(class_id),
+            "class_name": YOLO_CLASS_NAMES[class_id],
+            "label": label,
+            "source": source,
+            "class_confidence": None if e.get("class_confidence") is None else float(e.get("class_confidence")),
+            "quality_diameter_mm": None if e.get("quality_diameter_mm") is None else float(e.get("quality_diameter_mm")),
+            "bbox_yolo": [float(v) for v in box],
+            "bbox_xyxy": [int(x1), int(y1), int(x2), int(y2)],
+            "ellipse_center": [float(e.get("cx", 0.0)), float(e.get("cy", 0.0))],
+            "ellipse_axes": [float(v) for v in e.get("axes", (0.0, 0.0))],
+            "ellipse_angle": float(e.get("angle", 0.0)),
+            "axis_ratio": None if e.get("axis_ratio") is None else float(e.get("axis_ratio")),
+            "fill_ratio": None if e.get("fill_ratio") is None else float(e.get("fill_ratio")),
+        })
         color = COIN_COLOR.get(label, COIN_COLOR["?"])
         cv2.rectangle(preview, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
         cv2.putText(
@@ -888,6 +947,17 @@ def export_yolo_dataset_sample(q_frame, q_ellipses, cfg, ts):
     cv2.imwrite(str(img_path), q_frame)
     cv2.imwrite(str(preview_path), preview)
     label_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    _append_yolo_export_metadata(
+        dataset_dir,
+        split,
+        ts,
+        img_path.name,
+        label_path.name,
+        preview_path.name,
+        q_frame,
+        rows_meta,
+        cfg,
+    )
     print(f"[YOLO匯出] {img_path.name} labels={len(rows)} -> {dataset_dir}")
     return len(rows)
 
