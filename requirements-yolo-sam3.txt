@@ -1,0 +1,20 @@
+# CoinVision MG400 YOLO / SAM3 Python packages
+#
+# Recommended Python: 3.12 on Windows.
+# For NVIDIA GPU builds, install torch/torchvision from the matching PyTorch CUDA index first:
+#   python -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
+#
+# Then install the rest:
+#   python -m pip install -r requirements-yolo-sam3.txt
+
+ultralytics==8.4.36
+opencv-contrib-python==4.8.1.78
+numpy==1.26.4
+pillow==12.1.1
+matplotlib==3.10.8
+scipy==1.17.1
+pyyaml==6.0.3
+requests==2.33.1
+psutil==7.2.2
+tqdm==4.67.3
+
