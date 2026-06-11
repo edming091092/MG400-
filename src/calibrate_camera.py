@@ -16,7 +16,7 @@
 
 使用方式：
 1. 印一張純黑白棋盤格
-2. 如果 BOARD_W=9、BOARD_H=6，代表棋盤要有 9×6 內角點，也就是 10×7 格子
+2. 如果 BOARD_W=6、BOARD_H=8，代表棋盤要有 6×8 內角點，也就是 7×9 格子
 3. 拍 15~25 張不同位置、角度的照片
 4. 放到 calib_images/
 5. 執行：
@@ -37,9 +37,9 @@ from datetime import datetime
 # ============================================================
 
 # 這裡填「內角點數」，不是格子數
-# 常見標定板：9x6 內角點 = 10x7 格子
-BOARD_W = 9
-BOARD_H = 6
+# 標定板：6x8 內角點 = 7x9 格子
+BOARD_W = 6
+BOARD_H = 8
 
 # 每一格實際邊長，單位 mm
 # 你印出來後請用尺量，例如 25mm、30mm
@@ -327,7 +327,7 @@ def save_calibration_result(camera_matrix, dist_coeffs, image_size, reproj_error
     else:
         print("品質判斷：偏高，不建議直接使用。")
         print("可能原因：")
-        print("1. 棋盤內角點數設定錯，例如 10x7 格子要填 9x6 內角點")
+        print("1. 棋盤內角點數設定錯，例如 7x9 格子要填 6x8 內角點")
         print("2. 照片太少，或棋盤都集中在同一個位置")
         print("3. 棋盤模糊、反光、被裁切，角點抓錯")
         print("4. 新舊照片混在同一個資料夾")
@@ -454,8 +454,8 @@ def calibrate_from_images(paths):
         print("建議：")
         print("1. 確認你印的是純黑白棋盤格，不要有 ArUco 小圖案")
         print("2. BOARD_W / BOARD_H 要填內角點數")
-        print("3. 如果棋盤是 10x7 格子，BOARD_W=9, BOARD_H=6")
-        print("4. 如果棋盤是 9x6 格子，BOARD_W=8, BOARD_H=5")
+        print("3. 如果棋盤是 7x9 格子，BOARD_W=6, BOARD_H=8")
+        print("4. 如果棋盤是 6x8 格子，BOARD_W=5, BOARD_H=7")
         print("5. 棋盤要完整入鏡，不能被裁切")
         print("6. 拍近一點，讓棋盤佔畫面 1/3 到 1/2")
         print("7. 拍 15~25 張不同位置與角度")

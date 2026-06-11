@@ -1,0 +1,9 @@
+path: C:/Users/user/Desktop/coin_classifier/coin_mg400_product_package/src/yolo_dataset
+train: images/train
+val: images/val
+nc: 4
+names:
+  0: 1NT
+  1: 5NT
+  2: 10NT
+  3: 50NT

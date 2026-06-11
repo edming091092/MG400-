@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Manual Gemini pixel -> MG400 tabletop XY calibration.
+Manual Quality-camera pixel -> MG400 tabletop XY calibration.
 
 Move the MG400 TCP to several tabletop points, click the same point in the
-Gemini image, then press Enter/C to record the current robot X/Y.
+Quality camera image, then press Enter/C to record the current robot X/Y.
 """
 
 import datetime
@@ -15,8 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from gemini_controls import apply_color_controls, set_gemini_stream_env
-from dual_camera_live import load_config
+from dual_camera_live import load_config, open_quality_camera
 from calibration_session import archive_file, choose_session_mode
 
 
@@ -28,16 +27,17 @@ DEBUG_IMAGE = HERE / "test_output" / "robot_tabletop_homography_debug.jpg"
 if str(GEMINI_LIBS) not in sys.path:
     sys.path.append(str(GEMINI_LIBS))
 
-from core.camera import Gemini2Camera
 from core.robot import MG400
 
 
 clicked = [None]
+display_scale = [1.0]
 
 
 def on_mouse(event, x, y, flags, userdata):
     if event == cv2.EVENT_LBUTTONDOWN:
-        clicked[0] = (float(x), float(y))
+        scale = max(float(display_scale[0]), 1e-6)
+        clicked[0] = (float(x) / scale, float(y) / scale)
 
 
 def try_connect_robot():
@@ -76,6 +76,9 @@ def load_existing_points(path):
         return [], []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("image_source") != "quality" and "quality_to_robot_homography" not in data:
+            print("[資料] 舊教點是 Gemini 版本，已忽略；請用畫質相機重新教點")
+            return [], []
         image_points = [(float(u), float(v)) for u, v in data.get("image_points_px", [])]
         robot_points = [(float(x), float(y)) for x, y in data.get("robot_points_xy_mm", [])]
         if len(image_points) == len(robot_points):
@@ -114,13 +117,22 @@ def draw_points(frame, image_points, robot_points, session_mode="reset"):
         u, v = clicked[0]
         cv2.drawMarker(out, (int(u), int(v)), (0, 120, 255), cv2.MARKER_TILTED_CROSS, 26, 2)
     cv2.rectangle(out, (0, 0), (out.shape[1], 78), (20, 20, 20), -1)
-    cv2.putText(out, "Click TCP point, Enter/C=record, S=save, U=undo, Q=quit",
+    cv2.putText(out, "Quality cam: click TCP point, Enter/C=record, S=save, U=undo, Q=quit",
                 (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 255, 120), 2, cv2.LINE_AA)
     cv2.putText(out, f"points={len(image_points)}  need >=4, spread across table",
                 (10, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
     cv2.putText(out, f"mode={'APPEND old points' if session_mode == 'append' else 'RESET new teaching'}",
                 (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 220, 255), 1, cv2.LINE_AA)
     return out
+
+
+def fit_for_display(frame, max_w=1600, max_h=900):
+    h, w = frame.shape[:2]
+    scale = min(float(max_w) / max(float(w), 1.0), float(max_h) / max(float(h), 1.0), 1.0)
+    display_scale[0] = scale
+    if scale >= 0.999:
+        return frame
+    return cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
 
 
 def save_homography(image_points, robot_points, frame, cfg):
@@ -139,7 +151,8 @@ def save_homography(image_points, robot_points, frame, cfg):
     payload = {
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
         "source": "manual_tabletop_points",
-        "gemini_to_robot_homography": h_mat.tolist(),
+        "image_source": "quality",
+        "quality_to_robot_homography": h_mat.tolist(),
         "image_points_px": [[float(u), float(v)] for u, v in image_points],
         "robot_points_xy_mm": [[float(x), float(y)] for x, y in robot_points],
         "robot_table_z_mm": float(cfg.get("robot_table_z_mm", -160.0)),
@@ -166,7 +179,6 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config()
-    set_gemini_stream_env(cfg)
     existing_points, _ = load_existing_points(OUT_JSON)
     if args.reset:
         session_mode = "reset"
@@ -180,7 +192,7 @@ def main():
         if backup is not None:
             print(f"[資料] 舊教點已備份：{backup}")
     robot = try_connect_robot()
-    camera = Gemini2Camera(align_depth_to_color=True)
+    qcap = None
     if session_mode == "append":
         image_points, robot_points = load_existing_points(OUT_JSON)
         print(f"[資料] 已載入舊教點 {len(image_points)} 點，繼續新增")
@@ -191,13 +203,16 @@ def main():
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     cv2.setMouseCallback(win, on_mouse)
     try:
-        camera.open()
-        apply_color_controls(camera, cfg)
+        qcap, q_status = open_quality_camera(cfg)
+        if qcap is None:
+            raise RuntimeError(f"畫質相機開啟失敗：{q_status}")
+        print("[camera] 手臂桌面教點使用畫質相機，不使用深度相機畫面")
         while True:
-            color, _depth = camera.get_frames(timeout_ms=1000)
-            if color is None:
+            ok, color = qcap.read()
+            if not ok or color is None:
                 continue
             vis = draw_points(color, image_points, robot_points, session_mode)
+            vis = fit_for_display(vis)
             cv2.imshow(win, vis)
             key = cv2.waitKey(20) & 0xFF
             if key in (ord("q"), ord("Q"), 27):
@@ -223,7 +238,8 @@ def main():
     finally:
         if robot is not None:
             robot.disconnect()
-        camera.close()
+        if qcap is not None:
+            qcap.release()
         cv2.destroyAllWindows()
 
 

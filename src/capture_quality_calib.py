@@ -19,7 +19,7 @@ from pathlib import Path
 
 import cv2
 
-from calibrate_camera import find_chessboard_corners, resize_for_show
+from calibrate_camera import find_chessboard_corners
 from calibration_session import archive_dir, choose_session_mode
 
 
@@ -35,27 +35,102 @@ def load_dual_camera_config():
     return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
 
 
-def open_camera(index, width, height, fps):
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+def _camera_backend(name):
+    return {
+        "dshow": cv2.CAP_DSHOW,
+        "msmf": cv2.CAP_MSMF,
+        "any": cv2.CAP_ANY,
+    }.get(str(name).lower(), cv2.CAP_DSHOW)
+
+
+def apply_camera_props(cap, cfg, width, height, fps):
+    fourcc = str(cfg.get("quality_fourcc", "MJPG")).strip().upper()
+    if fourcc and fourcc not in ("NONE", "DEFAULT", "0"):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc[:4].ljust(4)))
     if width:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
     if height:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     if fps:
         cap.set(cv2.CAP_PROP_FPS, int(fps))
+    try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, int(cfg.get("quality_buffer_size", 1)))
+    except Exception:
+        pass
+
+
+def open_camera(index, width, height, fps, cfg):
+    backend_name = str(cfg.get("quality_camera_backend", "dshow")).lower()
+    backend_names = [backend_name, "dshow"] if backend_name != "msmf" else ["msmf", "dshow"]
+    backend_names = list(dict.fromkeys(backend_names))
+    cap = None
+    for name in backend_names:
+        candidate = cv2.VideoCapture(index, _camera_backend(name))
+        if candidate.isOpened():
+            cap = candidate
+            break
+        candidate.release()
+    if cap is None:
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    apply_camera_props(cap, cfg, width, height, fps)
     return cap
+
+
+def draw_chessboard_visible(frame, pattern_size, corners, scale):
+    if corners is None:
+        return frame
+    pts = corners.reshape(-1, 2) * float(scale)
+    cols, rows = pattern_size
+    radius = max(4, int(round(5 / max(scale, 0.2))))
+    thickness = max(2, int(round(3 / max(scale, 0.2))))
+    for r in range(rows):
+        row = pts[r * cols:(r + 1) * cols].astype(int)
+        color = (0, 220, 255) if r % 2 == 0 else (255, 120, 0)
+        cv2.polylines(frame, [row.reshape(-1, 1, 2)], False, color, thickness, cv2.LINE_AA)
+    for p in pts.astype(int):
+        cv2.circle(frame, tuple(p), radius, (255, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(frame, tuple(p), radius, (0, 255, 120), max(1, thickness - 1), cv2.LINE_AA)
+    return frame
+
+
+def resize_for_capture_show(frame, max_w=1600, max_h=900):
+    h, w = frame.shape[:2]
+    scale = min(float(max_w) / max(float(w), 1.0), float(max_h) / max(float(h), 1.0), 1.0)
+    if scale >= 0.999:
+        return frame.copy(), 1.0
+    out = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+    return out, scale
 
 
 def draw_status(frame, found, saved_count, camera_index, board_w, board_h):
     out = frame.copy()
     color = (0, 220, 80) if found else (0, 80, 255)
     text = "CHESSBOARD OK" if found else "NO CHESSBOARD"
-    cv2.rectangle(out, (0, 0), (out.shape[1], 104), (20, 20, 20), -1)
+    scale = max(0.75, min(out.shape[1] / 1280.0, out.shape[0] / 720.0))
+    font1 = 0.68 * scale
+    font2 = 0.48 * scale
+    thick = max(1, int(round(2 * scale)))
+    bar_h = max(96, int(round(104 * scale)))
+    cv2.rectangle(out, (0, 0), (out.shape[1], bar_h), (20, 20, 20), -1)
     cv2.putText(out, f"Quality cam #{camera_index}  {text}", (14, 28),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.68, color, 2, cv2.LINE_AA)
+                cv2.FONT_HERSHEY_SIMPLEX, font1, color, thick, cv2.LINE_AA)
     cv2.putText(out, f"board={board_w}x{board_h} inner corners  saved={saved_count}  SPACE=save  Q=quit",
-                (14, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (190, 190, 190), 1, cv2.LINE_AA)
+                (14, 58), cv2.FONT_HERSHEY_SIMPLEX, font2, (190, 190, 190), max(1, thick - 1), cv2.LINE_AA)
     return out
+
+
+def find_chessboard_on_preview(frame, pattern_size, max_detect_w=1600):
+    h, w = frame.shape[:2]
+    scale = min(float(max_detect_w) / max(float(w), 1.0), 1.0)
+    if scale < 0.999:
+        small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+    else:
+        small = frame
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    found, corners = find_chessboard_corners(gray, pattern_size)
+    if found and corners is not None and scale < 0.999:
+        corners = corners / scale
+    return found, corners
 
 
 def count_images(path):
@@ -67,9 +142,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="側相機標定照片擷取")
     parser.add_argument("--camera-index", type=int, default=int(cfg.get("quality_camera_index", 0)))
-    parser.add_argument("--width", type=int, default=int(cfg.get("quality_width", 1280)))
-    parser.add_argument("--height", type=int, default=int(cfg.get("quality_height", 720)))
-    parser.add_argument("--fps", type=int, default=int(cfg.get("quality_fps", 30)))
+    parser.add_argument("--width", type=int, default=int(cfg.get("quality_width", 3840)))
+    parser.add_argument("--height", type=int, default=int(cfg.get("quality_height", 2160)))
+    parser.add_argument("--fps", type=int, default=int(cfg.get("quality_fps", 15)))
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
     parser.add_argument("--preview-dir", type=Path, default=PREVIEW_DIR)
     parser.add_argument("--board-w", type=int, default=9)
@@ -96,7 +171,7 @@ def main():
     out_dir.mkdir(exist_ok=True)
     preview_dir.mkdir(exist_ok=True)
 
-    cap = open_camera(args.camera_index, args.width, args.height, args.fps)
+    cap = open_camera(args.camera_index, args.width, args.height, args.fps, cfg)
     if not cap.isOpened():
         raise RuntimeError(f"無法開啟側相機 index={args.camera_index}")
 
@@ -123,16 +198,15 @@ def main():
                     break
                 continue
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            found, corners = find_chessboard_corners(gray, pattern_size)
+            found, corners = find_chessboard_on_preview(frame, pattern_size)
 
-            debug = frame.copy()
+            debug, show_scale = resize_for_capture_show(frame)
             if found and corners is not None:
-                cv2.drawChessboardCorners(debug, pattern_size, corners, found)
+                debug = draw_chessboard_visible(debug, pattern_size, corners, show_scale)
             debug = draw_status(debug, found, saved_count, args.camera_index, args.board_w, args.board_h)
             cv2.putText(debug, f"mode={'APPEND' if session_mode == 'append' else 'RESET'}",
                         (14, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 255), 1, cv2.LINE_AA)
-            cv2.imshow(win, resize_for_show(debug, 1280, 720))
+            cv2.imshow(win, debug)
 
             key = cv2.waitKey(1) & 0xFF
             if key in (27, ord("q"), ord("Q")):

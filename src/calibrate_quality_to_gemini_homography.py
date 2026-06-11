@@ -13,7 +13,7 @@ import numpy as np
 
 
 HERE = Path(__file__).parent
-PAIR_DIR = HERE / "stereo_calib_pairs_7x9"
+PAIR_DIR = HERE / "stereo_calib_pairs_6x8"
 OUT_JSON = HERE / "quality_to_gemini_homography.json"
 PREVIEW_DIR = HERE / "homography_preview"
 
@@ -221,8 +221,8 @@ def main():
     parser.add_argument("--pair-dir", type=Path, default=PAIR_DIR)
     parser.add_argument("--out-json", type=Path, default=OUT_JSON)
     parser.add_argument("--preview-dir", type=Path, default=PREVIEW_DIR)
-    parser.add_argument("--board-w", type=int, default=9)
-    parser.add_argument("--board-h", type=int, default=6)
+    parser.add_argument("--board-w", type=int, default=6)
+    parser.add_argument("--board-h", type=int, default=8)
     args = parser.parse_args()
 
     pair_dir = args.pair_dir if args.pair_dir.is_absolute() else HERE / args.pair_dir

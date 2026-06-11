@@ -17,18 +17,61 @@ CONFIG_FILE = HERE / "dual_camera_config.json"
 OUT_DIR = HERE / "test_output"
 
 
+def write_preview(path, frame):
+    tmp_path = path.with_name(path.stem + ".tmp" + path.suffix)
+    if not cv2.imwrite(str(tmp_path), frame):
+        raise RuntimeError(f"預覽圖寫入失敗：{tmp_path}")
+    tmp_path.replace(path)
+
+
 def load_config():
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     return {}
 
 
+def camera_backend(name):
+    return {
+        "dshow": cv2.CAP_DSHOW,
+        "msmf": cv2.CAP_MSMF,
+        "any": cv2.CAP_ANY,
+    }.get(str(name).lower(), cv2.CAP_DSHOW)
+
+
+def apply_quality_props(cap, cfg, width, height, fps):
+    fourcc = str(cfg.get("quality_fourcc", "MJPG")).strip().upper()
+    if fourcc and fourcc not in ("NONE", "DEFAULT", "0"):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc[:4].ljust(4)))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
+    cap.set(cv2.CAP_PROP_FPS, int(fps))
+    try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, int(cfg.get("quality_buffer_size", 1)))
+    except Exception:
+        pass
+
+
 def open_quality(cfg):
     index = int(cfg.get("quality_camera_index", 0))
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(cfg.get("quality_width", 1280)))
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(cfg.get("quality_height", 720)))
-    cap.set(cv2.CAP_PROP_FPS, int(cfg.get("quality_fps", 30)))
+    backend_name = str(cfg.get("quality_camera_backend", "dshow")).lower()
+    backend_names = [backend_name, "dshow"] if backend_name != "msmf" else ["msmf", "dshow"]
+    backend_names = list(dict.fromkeys(backend_names))
+    cap = None
+    for name in backend_names:
+        candidate = cv2.VideoCapture(index, camera_backend(name))
+        if candidate.isOpened():
+            cap = candidate
+            break
+        candidate.release()
+    if cap is None:
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    apply_quality_props(
+        cap,
+        cfg,
+        int(cfg.get("quality_width", 3840)),
+        int(cfg.get("quality_height", 2160)),
+        int(cfg.get("quality_fps", 15)),
+    )
     return cap
 
 
@@ -72,7 +115,7 @@ def grab_quality_frame(cfg):
         raise RuntimeError("畫質相機開啟失敗")
     frame = None
     try:
-        for _ in range(8):
+        for _ in range(max(1, int(cfg.get("quality_warmup_frames", 8)))):
             ok, img = cap.read()
             if ok and img is not None:
                 frame = img
@@ -119,15 +162,15 @@ def main():
     cfg = load_config()
     OUT_DIR.mkdir(exist_ok=True)
     if args.view == "Quality":
-        cv2.imwrite(str(OUT_DIR / "live_preview_quality.jpg"), grab_quality_frame(cfg))
+        write_preview(OUT_DIR / "live_preview_quality.jpg", grab_quality_frame(cfg))
         return
     if args.view == "Gemini":
-        cv2.imwrite(str(OUT_DIR / "live_preview_gemini.jpg"), grab_gemini_frame(cfg))
+        write_preview(OUT_DIR / "live_preview_gemini.jpg", grab_gemini_frame(cfg))
         return
     quality_frame = grab_quality_frame(cfg)
     gemini_frame = grab_gemini_frame(cfg)
-    cv2.imwrite(str(OUT_DIR / "live_preview_quality.jpg"), quality_frame)
-    cv2.imwrite(str(OUT_DIR / "live_preview_gemini.jpg"), gemini_frame)
+    write_preview(OUT_DIR / "live_preview_quality.jpg", quality_frame)
+    write_preview(OUT_DIR / "live_preview_gemini.jpg", gemini_frame)
     save_combined_preview(quality_frame, gemini_frame)
 
 

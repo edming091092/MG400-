@@ -14,9 +14,15 @@ stereo_calib_preview/
 tabletop_homography_pairs_*/
 *_backup_*/
 src/Log/
+Log/
+runs/
+runs_yolo_coin/
+src/yolo_dataset/previews/
+src/*_backup_*
 calibration/*.jpg
 
 *.log
+*.cache
 *.csv
 .env
 venv/

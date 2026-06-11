@@ -17,6 +17,24 @@ class RobotError(Exception):
     pass
 
 
+def _pct(value) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return max(1, min(100, int(value)))
+    except Exception:
+        return None
+
+
+def _motion_options(**kwargs) -> str:
+    parts = []
+    for key, value in kwargs.items():
+        pct = _pct(value)
+        if pct is not None:
+            parts.append(f"{key}={pct}")
+    return ("," + ",".join(parts)) if parts else ""
+
+
 class MG400:
     def __init__(self, ip: str = config.ROBOT_IP,
                  dash_port: int = config.DASH_PORT,
@@ -30,6 +48,10 @@ class MG400:
         self._move: Optional[socket.socket] = None
         self.last_errors = []
         self.last_response = ""
+        self.default_speed_j: Optional[int] = None
+        self.default_acc_j: Optional[int] = None
+        self.default_speed_l: Optional[int] = None
+        self.default_acc_l: Optional[int] = None
 
     # ------------------------------------------------------------------ #
     #  連線 / 斷線
@@ -93,6 +115,12 @@ class MG400:
     def set_speed(self, pct: int):
         self._send(self._dash, f"SpeedFactor({max(1, min(100, pct))})")
 
+    def set_motion_profile(self, speed_j=None, acc_j=None, speed_l=None, acc_l=None):
+        self.default_speed_j = _pct(speed_j)
+        self.default_acc_j = _pct(acc_j)
+        self.default_speed_l = _pct(speed_l)
+        self.default_acc_l = _pct(acc_l)
+
     # ------------------------------------------------------------------ #
     #  探測下降：緩慢下降直到碰撞，回傳接觸 Z（mm）
     # ------------------------------------------------------------------ #
@@ -134,13 +162,19 @@ class MG400:
     # ------------------------------------------------------------------ #
     def movl(self, x: float, y: float, z: float, r: float = 0.0,
              timeout_s: float = config.MOVE_TIMEOUT_S,
-             tol_mm: float = config.MOVE_TOL_MM) -> bool:
+             tol_mm: float = config.MOVE_TOL_MM,
+             speed_l: Optional[int] = None,
+             acc_l: Optional[int] = None) -> bool:
         """
         直線移動到 (x, y, z, r)，等待到位。
         回傳 True=到位, False=超時或報錯。
         """
         self.clear_error()
-        resp = self._send(self._move, f"MovL({x:.3f},{y:.3f},{z:.3f},{r:.3f})")
+        opts = _motion_options(
+            SpeedL=self.default_speed_l if speed_l is None else speed_l,
+            AccL=self.default_acc_l if acc_l is None else acc_l,
+        )
+        resp = self._send(self._move, f"MovL({x:.3f},{y:.3f},{z:.3f},{r:.3f}{opts})")
         self.last_response = resp
         if not resp.startswith("0"):
             print(f"[robot] MovL 指令被拒: {resp}")
@@ -173,14 +207,22 @@ class MG400:
     # ------------------------------------------------------------------ #
     def set_do(self, index: int, state: int):
         """state: 1=ON, 0=OFF"""
-        self._send(self._dash, f"DOExecute({index},{state})")
+        resp = self._send(self._dash, f"DO({index},{state})")
+        print(f"[robot] DO{index}={state} → {resp}")
+        return resp
 
     def movj(self, x: float, y: float, z: float, r: float = 0.0,
              timeout_s: float = config.MOVE_TIMEOUT_S,
-             tol_mm: float = config.MOVE_TOL_MM) -> bool:
+             tol_mm: float = config.MOVE_TOL_MM,
+             speed_j: Optional[int] = None,
+             acc_j: Optional[int] = None) -> bool:
         """關節移動到 (x, y, z, r)，用於高空轉移，避免直線路徑規劃失敗。"""
         self.clear_error()
-        resp = self._send(self._move, f"MovJ({x:.3f},{y:.3f},{z:.3f},{r:.3f})")
+        opts = _motion_options(
+            SpeedJ=self.default_speed_j if speed_j is None else speed_j,
+            AccJ=self.default_acc_j if acc_j is None else acc_j,
+        )
+        resp = self._send(self._move, f"MovJ({x:.3f},{y:.3f},{z:.3f},{r:.3f}{opts})")
         self.last_response = resp
         if not resp.startswith("0"):
             print(f"[robot] MovJ 指令被拒: {resp}")

@@ -45,8 +45,8 @@ def detect_any(gray, board_w, board_h):
 def main():
     parser = argparse.ArgumentParser(description="檢查雙相機配對圖棋盤偵測")
     parser.add_argument("--pair-dir", type=Path, default=PAIR_DIR)
-    parser.add_argument("--board-w", type=int, default=9)
-    parser.add_argument("--board-h", type=int, default=6)
+    parser.add_argument("--board-w", type=int, default=6)
+    parser.add_argument("--board-h", type=int, default=8)
     args = parser.parse_args()
 
     pair_dir = args.pair_dir if args.pair_dir.is_absolute() else HERE / args.pair_dir
