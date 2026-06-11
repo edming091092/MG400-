@@ -19,6 +19,7 @@ runs/
 runs_yolo_coin/
 src/yolo_dataset/previews/
 src/*_backup_*
+sam3.pt
 calibration/*.jpg
 
 *.log
